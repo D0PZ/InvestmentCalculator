@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');
-const { fetchQuotes, fetchUSDCLP } = require('./market');
+const { fetchQuotes } = require('./market');
+const { getCurrentFX } = require('./fx');
 
 const POSITIONS_JSON = path.join(__dirname, '..', 'stock_scorer', 'positions.json');
 
@@ -21,13 +22,14 @@ async function syncFromStockScorer() {
 
   const tickers = [...new Set(external.map(p => p.ticker))];
   let quotes = {};
-  let fx = null;
+  let fxRate = 950;
   try {
-    [quotes, fx] = await Promise.all([fetchQuotes(tickers), fetchUSDCLP()]);
+    const [q, fx] = await Promise.all([fetchQuotes(tickers), getCurrentFX({ force: true })]);
+    quotes = q;
+    fxRate = fx.rate;
   } catch (e) {
     console.error('Yahoo fetch failed:', e.message);
   }
-  const fxRate = fx || 950;
 
   let imported = 0, updated = 0;
   const upsert = db.prepare(`SELECT id FROM positions WHERE ticker=?`);
@@ -61,8 +63,8 @@ async function refreshPrices() {
   if (positions.length === 0) return { refreshed: 0, message: 'sin posiciones' };
 
   const tickers = [...new Set(positions.map(p => p.ticker))];
-  const [quotes, fx] = await Promise.all([fetchQuotes(tickers), fetchUSDCLP()]);
-  const fxRate = fx || positions[0].fx_to_clp || 950;
+  const [quotes, fx] = await Promise.all([fetchQuotes(tickers), getCurrentFX({ force: true })]);
+  const fxRate = fx.rate || positions[0].fx_to_clp || 950;
 
   const update = db.prepare(
     `UPDATE positions SET market_price=?, fx_to_clp=?, updated_at=datetime('now') WHERE id=?`
