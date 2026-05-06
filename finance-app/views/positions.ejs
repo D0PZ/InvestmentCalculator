@@ -1,10 +1,12 @@
 <div class="page-header">
   <h1>Posiciones</h1>
   <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-    <small>FX USD/CLP: <strong><%= fx.rate ? fx.rate.toFixed(2) : '—' %></strong>
-      <% if (fx.fetched_at) { %>· <%= new Date(fx.fetched_at).toLocaleString('es-CL') %><% } %>
-      <% if (fx.fallback) { %>· <em style="color:var(--warn)">fallback</em><% } %>
-    </small>
+    <% if (typeof fx !== 'undefined' && fx) { %>
+      <small>FX USD/CLP: <strong><%= fx.rate ? fx.rate.toFixed(2) : '—' %></strong>
+        <% if (fx.fetched_at) { %>· <%= new Date(fx.fetched_at).toLocaleString('es-CL') %><% } %>
+        <% if (fx.fallback) { %>· <em style="color:var(--warn)">fallback</em><% } %>
+      </small>
+    <% } %>
     <form method="post" action="/positions/sync" style="display:inline"><button class="btn">⬇ Sync stock_scorer</button></form>
     <form method="post" action="/positions/refresh" style="display:inline"><button class="btn">↻ Refresh precios</button></form>
     <div class="big-num accent"><%= clp(total) %></div>

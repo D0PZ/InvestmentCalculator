@@ -1,9 +1,11 @@
 <div class="page-header">
   <h1>Salud financiera · <%= yyyymm %></h1>
   <div style="display:flex;gap:14px;align-items:center">
-    <small>USD/CLP: <strong><%= fx.rate ? fx.rate.toFixed(2) : '—' %></strong>
-      <% if (fx.fetched_at) { %>· <%= new Date(fx.fetched_at).toLocaleDateString('es-CL') %><% } %>
-    </small>
+    <% if (typeof fx !== 'undefined' && fx) { %>
+      <small>USD/CLP: <strong><%= fx.rate ? fx.rate.toFixed(2) : '—' %></strong>
+        <% if (fx.fetched_at) { %>· <%= new Date(fx.fetched_at).toLocaleDateString('es-CL') %><% } %>
+      </small>
+    <% } %>
     <form method="get" class="month-picker">
       <input type="month" name="month" value="<%= yyyymm %>" onchange="this.form.submit()" />
     </form>
