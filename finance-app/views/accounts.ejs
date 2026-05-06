@@ -1,0 +1,50 @@
+<div class="page-header"><h1>Cuentas</h1></div>
+
+<div class="card">
+  <h3>Agregar cuenta</h3>
+  <form method="post" action="/accounts" class="form-grid">
+    <label>Nombre <input type="text" name="name" required /></label>
+    <label>Tipo
+      <select name="type" required>
+        <option value="debit">Débito</option>
+        <option value="credit">Crédito</option>
+        <option value="digital">Digital</option>
+        <option value="benefit">Beneficio</option>
+      </select>
+    </label>
+    <label>Saldo (CLP) <input type="number" name="balance" step="1" /></label>
+    <label>Cupo crédito (si aplica) <input type="number" name="credit_limit" step="1" /></label>
+    <label>Crédito utilizado <input type="number" name="credit_used" step="1" /></label>
+    <label>Notas <input type="text" name="notes" /></label>
+    <button type="submit" class="btn btn-primary">Crear</button>
+  </form>
+</div>
+
+<% accounts.forEach(a => { %>
+  <div class="card">
+    <div class="account-header">
+      <h3><%= a.name %> <span class="tag tag-<%= a.type %>"><%= a.type %></span></h3>
+    </div>
+    <form method="post" action="/accounts/<%= a.id %>/update" class="form-grid">
+      <label>Saldo <input type="number" name="balance" value="<%= a.balance %>" step="1" /></label>
+      <% if (a.type === 'credit') { %>
+        <label>Cupo total <input type="number" name="credit_limit" value="<%= a.credit_limit || 0 %>" step="1" /></label>
+        <label>Utilizado <input type="number" name="credit_used" value="<%= a.credit_used || 0 %>" step="1" /></label>
+      <% } else { %>
+        <input type="hidden" name="credit_limit" value="<%= a.credit_limit || '' %>" />
+        <input type="hidden" name="credit_used" value="<%= a.credit_used || '' %>" />
+      <% } %>
+      <label>Notas <input type="text" name="notes" value="<%= a.notes || '' %>" /></label>
+      <button type="submit" class="btn">Actualizar</button>
+    </form>
+    <% if (a.type === 'credit' && a.credit_limit) { %>
+      <div class="bar" style="margin-top:10px">
+        <div class="bar-fill <%= (a.credit_used/a.credit_limit) > 0.7 ? 'bad' : (a.credit_used/a.credit_limit) > 0.5 ? 'warn' : 'good' %>" style="width: <%= Math.min(100, (a.credit_used/a.credit_limit)*100) %>%"></div>
+      </div>
+      <small>Disponible: <%= clp(a.credit_limit - (a.credit_used||0)) %> de <%= clp(a.credit_limit) %></small>
+    <% } %>
+    <form method="post" action="/accounts/<%= a.id %>/delete" onsubmit="return confirm('¿Eliminar?')" style="margin-top:10px">
+      <button class="btn btn-danger btn-sm">Eliminar cuenta</button>
+    </form>
+  </div>
+<% }) %>

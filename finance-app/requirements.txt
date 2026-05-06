@@ -1,0 +1,11 @@
+plotly
+pandas
+numpy
+requests
+yfinance
+feedparser
+xgboost
+scikit-learn
+rich
+fastapi
+uvicorn[standard]

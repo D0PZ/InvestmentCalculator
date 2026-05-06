@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Scorer</title>
+  <link rel="stylesheet" href="/static/css/base.css" />
+  <link rel="stylesheet" href="/static/css/components.css" />
+</head>
+<body>
+
+  <!-- ═══ HEADER ═══════════════════════════════════════════════════════════ -->
+  <header class="topbar">
+    <div class="topbar__brand">
+      <span class="topbar__logo">⚡</span>
+      <span class="topbar__title">Stock Scorer</span>
+    </div>
+    <div class="topbar__meta">
+      <span class="badge" id="model-badge">Cargando...</span>
+      <span class="topbar__sep">·</span>
+      <span id="ticker-count">—</span> tickers
+      <span class="topbar__sep">·</span>
+      <span id="last-update">—</span>
+      <span class="topbar__sep">·</span>
+      <span id="countdown-wrap">próximo en <b id="countdown">—</b>s</span>
+    </div>
+    <div class="topbar__status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">Conectando...</span>
+    </div>
+  </header>
+
+  <!-- ═══ MAIN ══════════════════════════════════════════════════════════════ -->
+  <main class="layout">
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+      <div class="spinner"></div>
+      <p id="loading-msg">Calculando scores iniciales…<br><small>Esto puede tardar 30-90s la primera vez.</small></p>
+    </div>
+
+    <!-- ─── KPI summary bar ─────────────────────────────────────────────── -->
+    <section class="kpi-bar glass" id="kpi-bar">
+      <div class="kpi">
+        <div class="kpi__val" id="kpi-portfolio">—</div>
+        <div class="kpi__label">Portafolio</div>
+      </div>
+      <div class="kpi kpi--green">
+        <div class="kpi__val" id="kpi-pnl">—</div>
+        <div class="kpi__label">P&amp;L Total</div>
+      </div>
+      <div class="kpi kpi--cyan">
+        <div class="kpi__val" id="kpi-buy-signals">—</div>
+        <div class="kpi__label">Señales compra</div>
+      </div>
+      <div class="kpi kpi--red">
+        <div class="kpi__val" id="kpi-sell-signals">—</div>
+        <div class="kpi__label">Señales venta</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi__val" id="kpi-cycle">#—</div>
+        <div class="kpi__label">Ciclo</div>
+      </div>
+    </section>
+
+    <!-- ─── Two-column: orders + positions ─────────────────────────────── -->
+    <div class="two-col">
+
+      <!-- ORDERS -->
+      <section class="glass panel">
+        <h2 class="panel__title">📋 Órdenes para hoy</h2>
+        <div id="orders-container">
+          <p class="empty-msg">Calculando…</p>
+        </div>
+      </section>
+
+      <!-- POSITIONS -->
+      <section class="glass panel">
+        <h2 class="panel__title">💼 Mis posiciones</h2>
+        <div id="positions-container">
+          <p class="empty-msg">Cargando posiciones…</p>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ─── Scores table ────────────────────────────────────────────────── -->
+    <section class="glass panel panel--wide">
+      <div class="panel__header">
+        <h2 class="panel__title">📊 Todos los tickers</h2>
+        <div class="table-controls">
+          <input type="text" id="filter-input" placeholder="🔍 Filtrar ticker…" class="filter-input" />
+          <select id="filter-verdict" class="filter-select">
+            <option value="">Todos los veredictos</option>
+            <option value="COMPRAR YA">COMPRAR YA</option>
+            <option value="COMPRAR (parcial)">COMPRAR (parcial)</option>
+            <option value="WATCHLIST">WATCHLIST</option>
+            <option value="NO HACER NADA">NO HACER NADA</option>
+            <option value="VENDER SI TIENES">VENDER SI TIENES</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="scores-table" id="scores-table">
+          <thead>
+            <tr>
+              <th data-col="ticker" class="sortable">Ticker</th>
+              <th data-col="last_price" class="sortable">Precio</th>
+              <th data-col="score" class="sortable">Score</th>
+              <th data-col="p_up" class="sortable">P↑</th>
+              <th data-col="p_down" class="sortable">P↓</th>
+              <th data-col="expected_return" class="sortable">Ret.Esp</th>
+              <th data-col="rsi" class="sortable">RSI</th>
+              <th data-col="intra_signal">Intra</th>
+              <th data-col="vwap_dist" class="sortable">vs VWAP</th>
+              <th data-col="verdict">Veredicto</th>
+            </tr>
+          </thead>
+          <tbody id="scores-tbody">
+            <tr><td colspan="10" class="empty-msg">Calculando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <span>Stock Scorer · Datos con ~15min delay (yfinance)</span>
+    <span>No constituye asesoramiento financiero</span>
+  </footer>
+
+  <script src="/static/js/main.js"></script>
+</body>
+</html>

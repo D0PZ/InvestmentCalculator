@@ -1,0 +1,20 @@
+{
+  "name": "finance-app",
+  "version": "0.1.0",
+  "description": "Personal finance dashboard — CLP, Diego",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --no-warnings server.js",
+    "dev": "node --no-warnings --watch server.js",
+    "seed": "node --no-warnings seed.js"
+  },
+  "dependencies": {
+    "cookie-session": "^2.1.0",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.21.1",
+    "express-ejs-layouts": "^2.5.1",
+    "morgan": "^1.10.0"
+  }
+}

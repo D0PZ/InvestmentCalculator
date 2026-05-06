@@ -1,0 +1,56 @@
+<div class="page-header">
+  <h1>Posiciones</h1>
+  <div style="display:flex;gap:12px;align-items:center">
+    <form method="post" action="/positions/sync" style="display:inline"><button class="btn">⬇ Sync stock_scorer</button></form>
+    <form method="post" action="/positions/refresh" style="display:inline"><button class="btn">↻ Refresh precios</button></form>
+    <div class="big-num accent"><%= clp(total) %></div>
+  </div>
+</div>
+
+<% if (flash) { %>
+  <div class="tip tip-<%= flash.type === 'good' ? 'good' : 'danger' %>"><strong><%= flash.text %></strong></div>
+<% } %>
+
+<div class="card">
+  <h3>Agregar posición</h3>
+  <form method="post" action="/positions" class="form-grid">
+    <label>Ticker <input type="text" name="ticker" required /></label>
+    <label>Acciones <input type="number" name="shares" step="0.0001" required /></label>
+    <label>Costo promedio <input type="number" name="avg_cost" step="0.01" required /></label>
+    <label>Precio mercado <input type="number" name="market_price" step="0.01" required /></label>
+    <label>Moneda
+      <select name="currency"><option>USD</option><option>CLP</option></select>
+    </label>
+    <label>FX a CLP <input type="number" name="fx_to_clp" step="0.01" value="950" /></label>
+    <button type="submit" class="btn btn-primary">Agregar</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Ticker</th><th class="num">Acciones</th><th class="num">Costo prom.</th><th class="num">Precio</th><th>Moneda</th><th class="num">FX</th><th class="num">Valor CLP</th><th class="num">P/L</th><th></th></tr></thead>
+    <tbody>
+      <% positions.forEach(p => {
+        const valueCLP = p.shares * p.market_price * p.fx_to_clp;
+        const costCLP = p.shares * p.avg_cost * p.fx_to_clp;
+        const pl = valueCLP - costCLP;
+      %>
+        <tr>
+          <td><strong><%= p.ticker %></strong></td>
+          <td class="num"><%= p.shares %></td>
+          <td class="num"><%= p.avg_cost %></td>
+          <td class="num"><%= p.market_price %></td>
+          <td><%= p.currency %></td>
+          <td class="num"><%= p.fx_to_clp %></td>
+          <td class="num"><%= clp(valueCLP) %></td>
+          <td class="num <%= pl >= 0 ? 'income' : 'expense' %>"><%= clp(pl) %></td>
+          <td>
+            <form method="post" action="/positions/<%= p.id %>/delete" onsubmit="return confirm('¿Eliminar?')">
+              <button class="btn btn-danger btn-sm">×</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>

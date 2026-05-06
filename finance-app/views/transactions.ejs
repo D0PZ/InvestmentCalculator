@@ -1,0 +1,58 @@
+<div class="page-header"><h1>Movimientos</h1></div>
+
+<div class="card">
+  <h3>Registrar movimiento</h3>
+  <form method="post" action="/transactions" class="form-grid">
+    <label>Tipo
+      <select name="kind" required>
+        <option value="expense">Gasto</option>
+        <option value="income">Ingreso</option>
+      </select>
+    </label>
+    <label>Monto (CLP)
+      <input type="number" name="amount" min="0" step="1" required />
+    </label>
+    <label>Categoría
+      <input type="text" name="category" placeholder="almuerzo, supermercado, dividendo..." />
+    </label>
+    <label>Descripción
+      <input type="text" name="description" />
+    </label>
+    <label>Cuenta
+      <select name="account_id">
+        <option value="">— sin cuenta —</option>
+        <% accounts.forEach(a => { %>
+          <option value="<%= a.id %>"><%= a.name %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Fecha
+      <input type="date" name="occurred_on" value="<%= today %>" />
+    </label>
+    <button type="submit" class="btn btn-primary">Registrar</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Últimos 200 movimientos</h3>
+  <table>
+    <thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Cuenta</th><th class="num">Monto</th><th></th></tr></thead>
+    <tbody>
+      <% rows.forEach(r => { %>
+        <tr>
+          <td><%= r.occurred_on %></td>
+          <td><%= r.kind === 'income' ? 'Ingreso' : 'Gasto' %></td>
+          <td><%= r.category || '—' %></td>
+          <td><%= r.description || '—' %></td>
+          <td><%= r.account_name || '—' %></td>
+          <td class="num <%= r.kind === 'income' ? 'income' : 'expense' %>"><%= r.kind === 'income' ? '+' : '−' %><%= clp(r.amount) %></td>
+          <td>
+            <form method="post" action="/transactions/<%= r.id %>/delete" onsubmit="return confirm('¿Eliminar?')">
+              <button class="btn btn-danger btn-sm">×</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>

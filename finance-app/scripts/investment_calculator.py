@@ -38,36 +38,51 @@ def fmt_fecha(ts: pd.Timestamp) -> str:
 # CONFIGURACIÓN
 # =============================================================================
 
-YEARS = 10
-INITIAL_CAPITAL_CLP = 300_000  # ~330 USD iniciales
+YEARS = 1
+INITIAL_CAPITAL_CLP = 0  # parte desde cero
 
 # INGRESOS (CLP)
-MONTHLY_SALARY_CLP = 1_454_000      # sueldo inicial mensual
-SALARY_GROWTH = 0.05  # agresivo
-SAVINGS_RATE = 0.66                 # % del sueldo destinado a inversión
+# Sin capital inicial y sin aportes (no hay plata para tradear)
+MONTHLY_SALARY_CLP = 15_000
+SALARY_GROWTH = 0.00
+SAVINGS_RATE = 1.00
 
-# INVERSIÓN (rentabilidad anual)
-ANNUAL_RETURN_REALISTIC = 0.25
-ANNUAL_RETURN_OPTIMISTIC = 0.40
-ANNUAL_RETURN_ULTRA = 0.30   # techo realista de un inversor pro consistente
+# =============================================================================
+# MODELO DE TRADING SEMANAL
+# =============================================================================
+# Asumimos 1 trade por semana (~4 por mes). Cada escenario define:
+#   - win_rate: probabilidad de cerrar el trade en ganancia
+#   - tp:       take-profit (ganancia por trade)
+#   - sl:       stop-loss   (pérdida por trade)
+# El retorno mensual esperado se calcula como:
+#   E[r_trade] = win_rate * tp + (1 - win_rate) * sl
+#   r_mensual  = (1 + E[r_trade]) ** 4 - 1
+#   r_anual    = (1 + r_mensual) ** 12 - 1
 
-# VOLATILIDAD (desviación estándar anual de los retornos)
-# 0.15 = 15% anual (acciones blue-chip), 0.30+ = cripto / alta vol
-ANNUAL_VOLATILITY = 0.20
+TRADES_POR_MES = 4   # 1 trade / semana
+
+def _annual_from_trade(win_rate: float, tp: float, sl: float) -> float:
+    expected = win_rate * tp + (1 - win_rate) * sl
+    return (1 + expected) ** (TRADES_POR_MES * 12) - 1
+
+# ESCENARIOS (trading activo semanal)
+#   Realista: trader real, 55% win rate, RR 1.5:1 (+15% / -10%)
+#   Optimista: muy buen año, 65% win rate, RR 1.5:1
+#   Pro: élite, 70% win rate, RR 1.5:1
+ANNUAL_RETURN_REALISTIC  = _annual_from_trade(win_rate=0.55, tp=0.15, sl=-0.10)
+ANNUAL_RETURN_OPTIMISTIC = _annual_from_trade(win_rate=0.65, tp=0.15, sl=-0.10)
+ANNUAL_RETURN_ULTRA      = _annual_from_trade(win_rate=0.70, tp=0.15, sl=-0.10)
+
+# VOLATILIDAD (trading activo = mucho más alta que buy-and-hold)
+ANNUAL_VOLATILITY = 0.60
 
 # MONTE CARLO
-MC_SIMULATIONS = 500   # número de trayectorias aleatorias
-MC_BASE_RETURN = ANNUAL_RETURN_REALISTIC  # retorno medio del MC
-MC_SEED = 42           # reproducibilidad (None para aleatorio puro)
+MC_SIMULATIONS = 500
+MC_BASE_RETURN = ANNUAL_RETURN_REALISTIC
+MC_SEED = 42
 
-# COMPORTAMIENTO HUMANO / EVENTOS DE CRISIS
-# Cada tupla: (mes desde inicio, shock_pct, meses_pausa_aporte)
-#   shock_pct: caída instantánea (-0.30 = -30%)
-#   meses_pausa: cuántos meses dejas de aportar después del shock
-CRISIS_EVENTS: list[tuple[int, float, int]] = [
-    (24,  -0.30, 6),   # crisis año 2: -30%, pausa 6 meses
-    (72,  -0.20, 3),   # mini-crisis año 6: -20%, pausa 3 meses
-]
+# Sin crisis para horizonte tan corto (1 año)
+CRISIS_EVENTS: list[tuple[int, float, int]] = []
 
 # COSTOS
 MONTHLY_SUBSCRIPTION_CLP = 66_000 / 12  # plan anual de 66.000 CLP
@@ -319,6 +334,14 @@ def main() -> None:
     print(f"Tipo de cambio: 1 USD = {usd_clp:,.2f} CLP  (fecha: {fx_date})")
     print(f"Volatilidad anual: {ANNUAL_VOLATILITY * 100:.0f}%   "
           f"Monte Carlo: {MC_SIMULATIONS} simulaciones")
+    print("-" * 64)
+    print("Modelo trading semanal: 1 trade/sem (4/mes), TP +15% / SL -10%")
+    print(f"  Realista  (win 55%):  retorno anual teórico "
+          f"{ANNUAL_RETURN_REALISTIC * 100:>8.1f}%")
+    print(f"  Optimista (win 65%):  retorno anual teórico "
+          f"{ANNUAL_RETURN_OPTIMISTIC * 100:>8.1f}%")
+    print(f"  Pro       (win 70%):  retorno anual teórico "
+          f"{ANNUAL_RETURN_ULTRA * 100:>8.1f}%")
     print("-" * 64)
     print(f"Capital inicial:        {fmt_clp(INITIAL_CAPITAL_CLP)}  "
           f"({fmt_usd(INITIAL_CAPITAL_CLP / usd_clp)})")

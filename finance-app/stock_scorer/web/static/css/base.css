@@ -1,0 +1,162 @@
+/* ═══════════════════════════════════════════════════════════════════
+   base.css — Variables, reset, tipografía, layout raíz
+   Stock Scorer · Glassmorphism dark theme
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Paleta */
+  --bg-deep:      #080c18;
+  --bg-mid:       #0d1225;
+  --bg-card:      rgba(255, 255, 255, 0.04);
+  --bg-card-hover:rgba(255, 255, 255, 0.07);
+  --border:       rgba(255, 255, 255, 0.09);
+  --border-glow:  rgba(0, 212, 255, 0.25);
+
+  /* Accentos */
+  --cyan:   #00d4ff;
+  --green:  #00e676;
+  --red:    #ff4757;
+  --orange: #ffa502;
+  --yellow: #ffe066;
+  --purple: #a29bfe;
+  --dim:    #546e7a;
+
+  /* Texto */
+  --text:      #e8eaf6;
+  --text-soft: #90a4ae;
+  --text-dim:  #546e7a;
+
+  /* Sombras */
+  --shadow-sm: 0 2px 12px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 24px rgba(0,0,0,0.5);
+  --shadow-glow: 0 0 24px rgba(0, 212, 255, 0.12);
+
+  /* Radios y transiciones */
+  --radius: 14px;
+  --radius-sm: 8px;
+  --transition: 0.25s ease;
+
+  /* Tipografía */
+  --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg-deep);
+  background-image:
+    radial-gradient(ellipse 120% 60% at 20% 0%, rgba(0,212,255,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 50% at 80% 100%, rgba(100,60,200,0.07) 0%, transparent 60%);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+
+/* ── Links ── */
+a { color: var(--cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Layout ── */
+.layout {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: relative;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+@media (max-width: 900px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* ── Glass card ── */
+.glass {
+  background: var(--bg-card);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition);
+}
+.glass:hover {
+  box-shadow: var(--shadow-md), var(--shadow-glow);
+  border-color: var(--border-glow);
+}
+
+/* ── Footer ── */
+.footer {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-dim);
+  font-size: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Loading overlay ── */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 24, 0.92);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  z-index: 100;
+  transition: opacity 0.4s ease;
+}
+.loading-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.loading-overlay p {
+  color: var(--text-soft);
+  text-align: center;
+  font-size: 15px;
+}
+.loading-overlay small {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.spinner {
+  width: 48px; height: 48px;
+  border: 3px solid rgba(0,212,255,0.15);
+  border-top-color: var(--cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Utility ── */
+.empty-msg {
+  color: var(--text-dim);
+  text-align: center;
+  padding: 24px;
+  font-size: 13px;
+}

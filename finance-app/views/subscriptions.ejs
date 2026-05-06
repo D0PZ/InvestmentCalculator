@@ -1,0 +1,50 @@
+<div class="page-header">
+  <h1>Suscripciones</h1>
+  <div class="big-num accent"><%= clp(total) %>/mes</div>
+</div>
+
+<div class="card">
+  <h3>Agregar suscripción</h3>
+  <form method="post" action="/subscriptions" class="form-grid">
+    <label>Nombre <input type="text" name="name" required /></label>
+    <label>Monto total (CLP) <input type="number" name="amount_total" step="1" required /></label>
+    <label>Ciclo
+      <select name="cycle" required>
+        <option value="monthly">Mensual</option>
+        <option value="annual">Anual</option>
+        <option value="installment">Cuotas</option>
+      </select>
+    </label>
+    <label>Cuotas (si aplica) <input type="number" name="installments" min="1" value="1" /></label>
+    <label>Inicio <input type="date" name="started_on" /></label>
+    <label>Notas <input type="text" name="notes" /></label>
+    <button type="submit" class="btn btn-primary">Crear</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Nombre</th><th>Ciclo</th><th class="num">Total</th><th>Cuotas</th><th class="num">Mensual</th><th>Activa</th><th></th></tr></thead>
+    <tbody>
+      <% subs.forEach(s => { %>
+        <tr class="<%= s.active ? '' : 'muted' %>">
+          <td><%= s.name %></td>
+          <td><%= s.cycle %></td>
+          <td class="num"><%= clp(s.amount_total) %></td>
+          <td><%= s.installments %></td>
+          <td class="num"><%= clp(s.monthly_cost) %></td>
+          <td>
+            <form method="post" action="/subscriptions/<%= s.id %>/toggle" style="display:inline">
+              <button class="btn btn-sm"><%= s.active ? '✓' : '✗' %></button>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="/subscriptions/<%= s.id %>/delete" onsubmit="return confirm('¿Eliminar?')" style="display:inline">
+              <button class="btn btn-danger btn-sm">×</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>

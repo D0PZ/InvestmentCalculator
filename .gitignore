@@ -9,3 +9,15 @@ env/
 .vscode/
 *.log
 .DS_Store
+
+# Node
+node_modules/
+
+# SQLite databases and WAL/SHM sidecars
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Leftover root dir from repo restructure (cache.db locked at move time)
+/stock_scorer/

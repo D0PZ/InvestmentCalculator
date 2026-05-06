@@ -1,0 +1,10 @@
+node_modules/
+data/*.db
+data/*.db-journal
+.env
+.DS_Store
+stock_scorer/__pycache__/
+stock_scorer/cache.db
+stock_scorer/cache.db-journal
+stock_scorer/cache.db-wal
+stock_scorer/cache.db-shm
