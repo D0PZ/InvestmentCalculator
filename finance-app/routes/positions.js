@@ -4,15 +4,23 @@ const db = require('../lib/db');
 const { syncFromStockScorer, refreshPrices } = require('../lib/stockSync');
 const { getCurrentFX, getCachedFX } = require('../lib/fx');
 const { todayISO } = require('../lib/format');
+const { computePositionReturns } = require('../lib/returns');
 
-router.get('/', async (req, res) => {
-  const positions = db.prepare(`SELECT * FROM positions ORDER BY ticker`).all();
-  const total = positions.reduce((s, p) => s + (p.shares * p.market_price * p.fx_to_clp), 0);
-  const accounts = db.prepare(`SELECT * FROM accounts ORDER BY name`).all();
-  const flash = req.session?.flash || null;
-  if (req.session) req.session.flash = null;
-  const fx = getCachedFX();
-  res.render('positions', { positions, accounts, total, flash, fx, today: todayISO(), title: 'Posiciones' });
+router.get('/', async (req, res, next) => {
+  try {
+    const fx = getCachedFX();
+    const positions = await computePositionReturns(fx.rate);
+    const total = positions.reduce((s, p) => s + p.value_clp, 0);
+    const totalCost = positions.reduce((s, p) => s + p.cost_clp, 0);
+    const accounts = db.prepare(`SELECT * FROM accounts ORDER BY name`).all();
+    const flash = req.session?.flash || null;
+    if (req.session) req.session.flash = null;
+    res.render('positions', {
+      positions, accounts, total, totalCost,
+      flash, fx, today: todayISO(),
+      title: 'Posiciones',
+    });
+  } catch (e) { next(e); }
 });
 
 router.post('/buy', async (req, res) => {

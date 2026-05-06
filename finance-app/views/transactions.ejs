@@ -1,4 +1,7 @@
-<div class="page-header"><h1>Movimientos</h1></div>
+<div class="page-header">
+  <h1>Movimientos</h1>
+  <a href="/transactions/export.csv" class="btn btn-sm">⇣ CSV</a>
+</div>
 
 <div class="card">
   <h3>Registrar movimiento</h3>
@@ -13,7 +16,10 @@
       <input type="number" name="amount" min="0" step="1" required />
     </label>
     <label>Categoría
-      <input type="text" name="category" placeholder="almuerzo, supermercado, dividendo..." />
+      <input type="text" name="category" list="cat-list" placeholder="almuerzo, supermercado, dividendo..." />
+      <datalist id="cat-list">
+        <% categories.forEach(c => { %><option value="<%= c %>"><% }) %>
+      </datalist>
     </label>
     <label>Descripción
       <input type="text" name="description" />
@@ -34,7 +40,33 @@
 </div>
 
 <div class="card">
-  <h3>Últimos 200 movimientos</h3>
+  <h3>Filtrar</h3>
+  <form method="get" class="form-grid">
+    <label>Tipo
+      <select name="kind">
+        <option value="">todos</option>
+        <option value="expense" <%= filters.kind === 'expense' ? 'selected' : '' %>>gasto</option>
+        <option value="income" <%= filters.kind === 'income' ? 'selected' : '' %>>ingreso</option>
+      </select>
+    </label>
+    <label>Categoría
+      <select name="category">
+        <option value="">todas</option>
+        <% categories.forEach(c => { %>
+          <option value="<%= c %>" <%= filters.category === c ? 'selected' : '' %>><%= c %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Buscar
+      <input type="text" name="q" value="<%= filters.q %>" placeholder="texto en descripción/categoría" />
+    </label>
+    <button type="submit" class="btn">Filtrar</button>
+    <a href="/transactions" class="btn btn-sm">Limpiar</a>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Resultados (máx. 200)</h3>
   <table>
     <thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Cuenta</th><th class="num">Monto</th><th></th></tr></thead>
     <tbody>
@@ -46,8 +78,9 @@
           <td><%= r.description || '—' %></td>
           <td><%= r.account_name || '—' %></td>
           <td class="num <%= r.kind === 'income' ? 'income' : 'expense' %>"><%= r.kind === 'income' ? '+' : '−' %><%= clp(r.amount) %></td>
-          <td>
-            <form method="post" action="/transactions/<%= r.id %>/delete" onsubmit="return confirm('¿Eliminar?')">
+          <td style="white-space:nowrap">
+            <a href="/transactions/<%= r.id %>/edit" class="btn btn-sm">✎</a>
+            <form method="post" action="/transactions/<%= r.id %>/delete" onsubmit="return confirm('¿Eliminar?')" style="display:inline">
               <button class="btn btn-danger btn-sm">×</button>
             </form>
           </td>

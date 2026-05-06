@@ -23,16 +23,22 @@
     <div class="stat-value income"><%= clp(health.income) %></div>
   </div>
   <div class="card stat">
-    <div class="stat-label">Gastos del mes</div>
-    <div class="stat-value expense"><%= clp(health.expenses) %></div>
+    <div class="stat-label">Gastos consumo</div>
+    <div class="stat-value expense"><%= clp(health.consumptionExpenses) %></div>
+    <% if (health.investmentOutflow > 0) { %>
+      <small>+ <%= clp(health.investmentOutflow) %> en inversiones (no resta del ahorro)</small>
+    <% } %>
   </div>
   <div class="card stat">
-    <div class="stat-label">Suscripciones (mensual)</div>
+    <div class="stat-label">Suscripciones</div>
     <div class="stat-value"><%= clp(health.subsMonthly) %></div>
   </div>
   <div class="card stat">
-    <div class="stat-label">Flujo neto</div>
-    <div class="stat-value <%= health.netCashFlow >= 0 ? 'income' : 'expense' %>"><%= clp(health.netCashFlow) %></div>
+    <div class="stat-label">Tasa de ahorro</div>
+    <div class="stat-value <%= health.savingsRate >= 0.2 ? 'income' : health.savingsRate < 0.1 ? 'expense' : '' %>">
+      <%= (health.savingsRate * 100).toFixed(1) %>%
+    </div>
+    <small>Capacidad: <%= clp(health.savingsCapacity) %></small>
   </div>
 </div>
 
@@ -40,7 +46,7 @@
   <div class="card">
     <h3>Cash líquido</h3>
     <div class="big-num"><%= clp(health.liquidCash) %></div>
-    <small>Suma de débito + cuentas digitales + beneficios</small>
+    <small>Débito + cuentas digitales + beneficios</small>
   </div>
   <div class="card">
     <h3>Crédito utilizado</h3>
@@ -52,8 +58,52 @@
     <h3>Patrimonio total</h3>
     <div class="big-num"><%= clp(health.totalPatrimony) %></div>
     <small>Cash + inversiones − deuda</small>
+    <% if (patrimonyReturns) { %>
+      <div style="display:flex;gap:14px;margin-top:8px">
+        <small>Mes:
+          <% if (patrimonyReturns.month_return !== null) { %>
+            <strong class="<%= patrimonyReturns.month_return >= 0 ? 'income' : 'expense' %>"><%= pctFromRatio(patrimonyReturns.month_return) %></strong>
+            <span class="muted">(<%= signedClp(patrimonyReturns.month_delta) %>)</span>
+          <% } else { %>
+            <span class="muted">— (esperando snapshot inicial)</span>
+          <% } %>
+        </small>
+        <small>Año:
+          <% if (patrimonyReturns.year_return !== null) { %>
+            <strong class="<%= patrimonyReturns.year_return >= 0 ? 'income' : 'expense' %>"><%= pctFromRatio(patrimonyReturns.year_return) %></strong>
+          <% } else { %>
+            <span class="muted">—</span>
+          <% } %>
+        </small>
+      </div>
+    <% } %>
   </div>
 </div>
+
+<% if (portfolioReturns && portfolioReturns.value_clp > 0) { %>
+<div class="card">
+  <h3>📈 Retorno del portafolio</h3>
+  <div class="grid grid-4" style="margin-bottom:0">
+    <div>
+      <small>Valor actual</small>
+      <div class="big-num"><%= clp(portfolioReturns.value_clp) %></div>
+    </div>
+    <div>
+      <small>P/L total</small>
+      <div class="big-num <%= portfolioReturns.pl_clp >= 0 ? 'income' : 'expense' %>"><%= signedClp(portfolioReturns.pl_clp) %></div>
+      <small><%= pctFromRatio(portfolioReturns.total_return) %> vs costo</small>
+    </div>
+    <div>
+      <small>% mes <% if (portfolioReturns.month_approx) { %><span class="muted">(aprox)</span><% } %></small>
+      <div class="big-num <%= portfolioReturns.month_return >= 0 ? 'income' : 'expense' %>"><%= pctFromRatio(portfolioReturns.month_return) %></div>
+    </div>
+    <div>
+      <small>% año (YTD) <% if (portfolioReturns.year_approx) { %><span class="muted">(aprox)</span><% } %></small>
+      <div class="big-num <%= portfolioReturns.year_return >= 0 ? 'income' : 'expense' %>"><%= pctFromRatio(portfolioReturns.year_return) %></div>
+    </div>
+  </div>
+</div>
+<% } %>
 
 <div class="grid grid-2">
   <div class="card">
@@ -78,40 +128,37 @@
 
 <div class="grid grid-2">
   <div class="card">
+    <h3>Top categorías de gasto</h3>
+    <% if (health.categoryBreakdown.length === 0) { %>
+      <p class="muted">Sin gastos este mes.</p>
+    <% } else { %>
+      <% const maxCat = health.categoryBreakdown[0].total; %>
+      <% health.categoryBreakdown.forEach(c => { %>
+        <div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span><%= c.category %> <small>(<%= c.n %>)</small></span>
+            <strong><%= clp(c.total) %></strong>
+          </div>
+          <div class="bar"><div class="bar-fill" style="width:<%= (c.total/maxCat*100).toFixed(1) %>%;background:var(--accent)"></div></div>
+        </div>
+      <% }) %>
+    <% } %>
+  </div>
+  <div class="card">
     <h3>Movimientos recientes</h3>
     <% if (recentTx.length === 0) { %>
-      <p>Sin movimientos registrados. <a href="/transactions">Agrega el primero</a>.</p>
+      <p>Sin movimientos. <a href="/transactions">Agregar</a>.</p>
     <% } else { %>
       <table>
-        <thead><tr><th>Fecha</th><th>Descripción</th><th>Cuenta</th><th class="num">Monto</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Descripción</th><th class="num">Monto</th></tr></thead>
         <tbody>
           <% recentTx.forEach(t => { %>
             <tr>
               <td><%= t.occurred_on %></td>
               <td><%= t.description || t.category || '—' %></td>
-              <td><%= t.account_name || '—' %></td>
               <td class="num <%= t.kind === 'income' ? 'income' : 'expense' %>">
                 <%= t.kind === 'income' ? '+' : '−' %><%= clp(t.amount) %>
               </td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
-    <% } %>
-  </div>
-  <div class="card">
-    <h3>Suscripciones activas</h3>
-    <% if (subs.length === 0) { %>
-      <p>Sin suscripciones. <a href="/subscriptions">Agregar</a>.</p>
-    <% } else { %>
-      <table>
-        <thead><tr><th>Nombre</th><th>Ciclo</th><th class="num">Mensual</th></tr></thead>
-        <tbody>
-          <% subs.forEach(s => { %>
-            <tr>
-              <td><%= s.name %></td>
-              <td><%= s.cycle %></td>
-              <td class="num"><%= clp(s.monthly_cost) %></td>
             </tr>
           <% }) %>
         </tbody>

@@ -61,6 +61,32 @@ raw.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(occurred_on);
   CREATE INDEX IF NOT EXISTS idx_tx_kind ON transactions(kind);
+  CREATE INDEX IF NOT EXISTS idx_tx_category ON transactions(category);
+
+  CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+    date TEXT PRIMARY KEY,
+    value_clp INTEGER NOT NULL,
+    cost_clp INTEGER NOT NULL,
+    fx REAL NOT NULL,
+    positions_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS patrimony_snapshots (
+    date TEXT PRIMARY KEY,
+    cash_clp INTEGER NOT NULL,
+    investments_clp INTEGER NOT NULL,
+    debt_clp INTEGER NOT NULL,
+    total_clp INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS price_history (
+    ticker TEXT NOT NULL,
+    date TEXT NOT NULL,
+    close REAL NOT NULL,
+    PRIMARY KEY (ticker, date)
+  );
 `);
 
 const db = {

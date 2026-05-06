@@ -14,6 +14,20 @@ function computeHealth(yyyymm = currentYYYYMM()) {
      WHERE kind='expense' AND occurred_on BETWEEN ? AND ?`
   ).get(start, end).total;
 
+  const investmentOutflow = db.prepare(
+    `SELECT COALESCE(SUM(amount),0) AS total FROM transactions
+     WHERE kind='expense' AND category='inversión' AND occurred_on BETWEEN ? AND ?`
+  ).get(start, end).total;
+
+  const consumptionExpenses = expenses - investmentOutflow;
+
+  const categoryBreakdown = db.prepare(
+    `SELECT COALESCE(category, 'sin categoría') AS category, SUM(amount) AS total, COUNT(*) AS n
+     FROM transactions
+     WHERE kind='expense' AND occurred_on BETWEEN ? AND ?
+     GROUP BY category ORDER BY total DESC LIMIT 8`
+  ).all(start, end);
+
   const subsMonthly = db.prepare(
     `SELECT COALESCE(SUM(monthly_cost),0) AS total FROM subscriptions WHERE active=1`
   ).get().total;
@@ -37,7 +51,7 @@ function computeHealth(yyyymm = currentYYYYMM()) {
   const projectedFreeCash = liquidCash + netCashFlow - subsMonthly;
   const totalPatrimony = liquidCash + investmentsCLP - creditUsedTotal;
 
-  const savingsCapacity = Math.max(0, income - expenses - subsMonthly);
+  const savingsCapacity = Math.max(0, income - consumptionExpenses - subsMonthly);
   const savingsRate = income ? (savingsCapacity / income) : 0;
 
   const racionalGoalMin = 500_000;
@@ -63,11 +77,13 @@ function computeHealth(yyyymm = currentYYYYMM()) {
 
   return {
     yyyymm, start, end,
-    income, expenses, subsMonthly, netCashFlow,
+    income, expenses, consumptionExpenses, investmentOutflow,
+    subsMonthly, netCashFlow,
     liquidCash, creditUsedTotal, creditLimitTotal, creditUsagePct,
     investmentsCLP, totalPatrimony, projectedFreeCash,
     savingsCapacity, savingsRate, racionalSuggested,
     racionalGoalMin, racionalGoalMax,
+    categoryBreakdown,
     score, tips,
     accounts, positions
   };

@@ -31,9 +31,11 @@ app.use(cookieSession({
   secure: process.env.NODE_ENV === 'production',
 }));
 
-const { clp, pct } = require('./lib/format');
+const { clp, pct, pctFromRatio, signedClp } = require('./lib/format');
 app.locals.clp = clp;
 app.locals.pct = pct;
+app.locals.pctFromRatio = pctFromRatio;
+app.locals.signedClp = signedClp;
 
 app.use((req, res, next) => {
   res.locals.currentPath = req.path;
@@ -49,6 +51,7 @@ app.use('/transactions', require('./routes/transactions'));
 app.use('/accounts', require('./routes/accounts'));
 app.use('/subscriptions', require('./routes/subscriptions'));
 app.use('/positions', require('./routes/positions'));
+app.use('/settings', require('./routes/settings'));
 
 app.use((err, req, res, next) => {
   console.error(err);

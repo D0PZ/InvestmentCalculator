@@ -1,0 +1,37 @@
+<div class="page-header">
+  <h1>Editar movimiento</h1>
+  <a href="/transactions" class="btn btn-sm">← volver</a>
+</div>
+
+<div class="card">
+  <form method="post" action="/transactions/<%= tx.id %>/update" class="form-grid">
+    <label>Tipo
+      <select name="kind" required>
+        <option value="expense" <%= tx.kind === 'expense' ? 'selected' : '' %>>Gasto</option>
+        <option value="income" <%= tx.kind === 'income' ? 'selected' : '' %>>Ingreso</option>
+      </select>
+    </label>
+    <label>Monto (CLP)
+      <input type="number" name="amount" value="<%= tx.amount %>" step="1" required />
+    </label>
+    <label>Categoría
+      <input type="text" name="category" value="<%= tx.category || '' %>" />
+    </label>
+    <label>Descripción
+      <input type="text" name="description" value="<%= tx.description || '' %>" />
+    </label>
+    <label>Cuenta
+      <select name="account_id">
+        <option value="">— sin cuenta —</option>
+        <% accounts.forEach(a => { %>
+          <option value="<%= a.id %>" <%= tx.account_id === a.id ? 'selected' : '' %>><%= a.name %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Fecha
+      <input type="date" name="occurred_on" value="<%= tx.occurred_on.slice(0, 10) %>" />
+    </label>
+    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+  </form>
+  <small>Si cambias el monto o la cuenta, el balance se reconcilia automáticamente.</small>
+</div>

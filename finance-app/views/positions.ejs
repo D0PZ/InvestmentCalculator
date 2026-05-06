@@ -17,6 +17,26 @@
   <div class="tip tip-<%= flash.type === 'good' ? 'good' : 'danger' %>"><strong><%= flash.text %></strong></div>
 <% } %>
 
+<% if (positions.length > 0) { %>
+  <% const totalPL = total - totalCost; %>
+  <% const totalRet = totalCost ? (totalPL / totalCost) : 0; %>
+  <div class="grid grid-3">
+    <div class="card stat">
+      <div class="stat-label">Costo total</div>
+      <div class="stat-value"><%= clp(totalCost) %></div>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">P/L total</div>
+      <div class="stat-value <%= totalPL >= 0 ? 'income' : 'expense' %>"><%= signedClp(totalPL) %></div>
+      <small><%= pctFromRatio(totalRet) %></small>
+    </div>
+    <div class="card stat">
+      <div class="stat-label">Posiciones</div>
+      <div class="stat-value"><%= positions.length %></div>
+    </div>
+  </div>
+<% } %>
+
 <div class="card">
   <h3>🛒 Registrar compra</h3>
   <form method="post" action="/positions/buy" class="form-grid">
@@ -35,42 +55,38 @@
     <label>Descripción <input type="text" name="description" placeholder="opcional" /></label>
     <button type="submit" class="btn btn-primary">Registrar compra</button>
   </form>
-  <small>Convierte USD→CLP con la tasa del día (se actualiza al pulsar el botón). El gasto en CLP se suma a Movimientos.</small>
+  <small>Convierte USD→CLP con la tasa del día y registra el gasto en Movimientos (categoría "inversión", excluida del cálculo de tasa de ahorro).</small>
 </div>
 
 <div class="card">
-  <h3>Agregar posición</h3>
-  <form method="post" action="/positions" class="form-grid">
-    <label>Ticker <input type="text" name="ticker" required /></label>
-    <label>Acciones <input type="number" name="shares" step="0.0001" required /></label>
-    <label>Costo promedio <input type="number" name="avg_cost" step="0.01" required /></label>
-    <label>Precio mercado <input type="number" name="market_price" step="0.01" required /></label>
-    <label>Moneda
-      <select name="currency"><option>USD</option><option>CLP</option></select>
-    </label>
-    <label>FX a CLP <input type="number" name="fx_to_clp" step="0.01" value="950" /></label>
-    <button type="submit" class="btn btn-primary">Agregar</button>
-  </form>
-</div>
-
-<div class="card">
+  <h3>Detalle</h3>
   <table>
-    <thead><tr><th>Ticker</th><th class="num">Acciones</th><th class="num">Costo prom.</th><th class="num">Precio</th><th>Moneda</th><th class="num">FX</th><th class="num">Valor CLP</th><th class="num">P/L</th><th></th></tr></thead>
+    <thead>
+      <tr>
+        <th>Ticker</th>
+        <th class="num">Acciones</th>
+        <th class="num">Costo prom.</th>
+        <th class="num">Precio</th>
+        <th class="num">Valor CLP</th>
+        <th class="num">P/L</th>
+        <th class="num">Total</th>
+        <th class="num">Mes</th>
+        <th class="num">Año</th>
+        <th></th>
+      </tr>
+    </thead>
     <tbody>
-      <% positions.forEach(p => {
-        const valueCLP = p.shares * p.market_price * p.fx_to_clp;
-        const costCLP = p.shares * p.avg_cost * p.fx_to_clp;
-        const pl = valueCLP - costCLP;
-      %>
+      <% positions.forEach(p => { %>
         <tr>
           <td><strong><%= p.ticker %></strong></td>
-          <td class="num"><%= p.shares %></td>
-          <td class="num"><%= p.avg_cost %></td>
-          <td class="num"><%= p.market_price %></td>
-          <td><%= p.currency %></td>
-          <td class="num"><%= p.fx_to_clp %></td>
-          <td class="num"><%= clp(valueCLP) %></td>
-          <td class="num <%= pl >= 0 ? 'income' : 'expense' %>"><%= clp(pl) %></td>
+          <td class="num"><%= p.shares.toFixed(7) %></td>
+          <td class="num">$<%= p.avg_cost.toFixed(2) %></td>
+          <td class="num">$<%= p.market_price.toFixed(2) %></td>
+          <td class="num"><%= clp(p.value_clp) %></td>
+          <td class="num <%= p.pl_clp >= 0 ? 'income' : 'expense' %>"><%= signedClp(p.pl_clp) %></td>
+          <td class="num <%= p.total_return >= 0 ? 'income' : 'expense' %>"><%= pctFromRatio(p.total_return) %></td>
+          <td class="num <%= p.month_return >= 0 ? 'income' : 'expense' %>" title="<%= p.month_ref_date || 'sin datos' %>"><%= pctFromRatio(p.month_return) %></td>
+          <td class="num <%= p.year_return >= 0 ? 'income' : 'expense' %>" title="<%= p.year_ref_date || 'sin datos' %>"><%= pctFromRatio(p.year_return) %></td>
           <td>
             <form method="post" action="/positions/<%= p.id %>/delete" onsubmit="return confirm('¿Eliminar?')">
               <button class="btn btn-danger btn-sm">×</button>
@@ -80,4 +96,5 @@
       <% }) %>
     </tbody>
   </table>
+  <small>Mes/Año = retorno del precio desde inicio del período (datos históricos cacheados de Stooq). El tooltip muestra la fecha de referencia.</small>
 </div>
