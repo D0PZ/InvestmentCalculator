@@ -2,16 +2,19 @@ const { EventEmitter } = require('node:events');
 const db = require('./db');
 
 const DEFAULTS = {
+  paperBankrollStart: 1000,
   capitalUSD: 100,
-  stopPct: 0.8,
-  targetPct: 2.0,
-  beTriggerPct: 1.0,
-  cooldownMs: 5 * 60 * 1000,
-  rvolMin: 1.5,
+  stopPct: 0.3,
+  targetPct: 0.6,
+  beTriggerPct: 0.3,
+  cooldownMs: 90 * 1000,
+  rvolMin: 1.3,
   rsiMin: 50,
-  rsiMax: 70,
-  minSecondsFromOpen: 300,
-  flatBeforeCloseMin: 5,
+  rsiMax: 75,
+  minSecondsFromOpen: 60,
+  flatBeforeCloseMin: 2,
+  trailAfterBePct: 0.2,
+  maxHoldSeconds: 10 * 60,
 };
 
 const NYSE_OPEN_MIN = 9 * 60 + 30;
@@ -118,7 +121,8 @@ class StrategyEngine extends EventEmitter {
       symbol, entry, stop, originalStop: stop, target, beTrigger,
       shares, positionUSD, riskUSD, rewardUSD,
       openTs: now, beActive: false,
-      strategy: 'VWAP-reclaim-long',
+      highestPrice: entry,
+      strategy: 'VWAP-reclaim-scalp',
     };
     this.positions.set(symbol, position);
     this.emit('signal', {
@@ -133,6 +137,8 @@ class StrategyEngine extends EventEmitter {
     const price = snap.lastPrice;
     const now = Date.now();
 
+    if (price > (open.highestPrice || open.entry)) open.highestPrice = price;
+
     if (!open.beActive && price >= open.beTrigger) {
       open.stop = open.entry;
       open.beActive = true;
@@ -144,17 +150,27 @@ class StrategyEngine extends EventEmitter {
       });
     }
 
+    if (open.beActive && this.cfg.trailAfterBePct > 0) {
+      const trailStop = +(open.highestPrice * (1 - this.cfg.trailAfterBePct / 100)).toFixed(2);
+      if (trailStop > open.stop) open.stop = trailStop;
+    }
+
     const nyMin = nyMinuteOfDay(now);
     const forceClose = nyMin >= NYSE_CLOSE_MIN - this.cfg.flatBeforeCloseMin;
+    const heldSeconds = (now - open.openTs) / 1000;
+    const maxHoldReached = this.cfg.maxHoldSeconds > 0 && heldSeconds >= this.cfg.maxHoldSeconds;
 
     let reason = null;
     let result = null;
     if (price >= open.target) { reason = 'target alcanzado'; result = 'WIN'; }
     else if (price <= open.stop) {
-      reason = open.beActive ? 'stop breakeven' : 'stop loss';
-      result = open.beActive ? 'BE' : 'LOSS';
-    } else if (Number.isFinite(snap.vwap) && price < snap.vwap * 0.998) {
-      reason = 'perdió VWAP'; result = 'TREND_BREAK';
+      reason = open.beActive ? 'trail/breakeven stop' : 'stop loss';
+      result = open.beActive ? (price >= open.entry ? 'WIN' : 'BE') : 'LOSS';
+    } else if (Number.isFinite(snap.vwap) && price < snap.vwap * 0.999) {
+      reason = 'perdió VWAP'; result = price >= open.entry ? 'WIN' : 'TREND_BREAK';
+    } else if (maxHoldReached) {
+      reason = `max hold ${this.cfg.maxHoldSeconds}s`;
+      result = price >= open.entry ? 'WIN' : 'LOSS';
     } else if (forceClose) {
       reason = 'cierre de mercado'; result = price >= open.entry ? 'WIN' : 'LOSS';
     }
@@ -180,42 +196,19 @@ class StrategyEngine extends EventEmitter {
     if (Number.isFinite(usd) && usd > 0) this.cfg.capitalUSD = usd;
   }
 
-  loadPosition({ symbol, shares, costBasis, openTs }) {
-    if (!symbol || !Number.isFinite(shares) || shares <= 0) return null;
-    if (!Number.isFinite(costBasis) || costBasis <= 0) return null;
-    const entry = +costBasis.toFixed(2);
-    const stop = +(entry * (1 - this.cfg.stopPct / 100)).toFixed(2);
-    const target = +(entry * (1 + this.cfg.targetPct / 100)).toFixed(2);
-    const beTrigger = +(entry * (1 + this.cfg.beTriggerPct / 100)).toFixed(2);
-    const positionUSD = +(shares * entry).toFixed(2);
-    const riskUSD = +((entry - stop) * shares).toFixed(2);
-    const rewardUSD = +((target - entry) * shares).toFixed(2);
-    const position = {
-      symbol: symbol.toUpperCase(),
-      entry, stop, originalStop: stop, target, beTrigger,
-      shares, positionUSD, riskUSD, rewardUSD,
-      openTs: openTs || Date.now(),
-      beActive: false,
-      strategy: 'imported-racional',
-      imported: true,
-    };
-    this.positions.set(position.symbol, position);
-    this.emit('signal', {
-      type: 'IMPORT', side: 'LONG', symbol: position.symbol, position: { ...position },
-      message: `📦 Importada ${position.symbol} · ${shares} acc @ $${entry} · stop $${stop} · target $${target}`,
-      reason: 'posición existente cargada desde extracto Racional',
-      ts: Date.now(),
-    });
-    return position;
+  bankroll() {
+    const allPnl = this._allHistoryPnl();
+    return +(this.cfg.paperBankrollStart + allPnl).toFixed(2);
   }
 
-  loadPositionsBulk(rows) {
-    const loaded = [];
-    for (const r of rows || []) {
-      const p = this.loadPosition(r);
-      if (p) loaded.push(p);
-    }
-    return loaded;
+  _allHistoryPnl() {
+    try {
+      const row = db.prepare(
+        `SELECT SUM(CAST(json_extract(payload_json, '$.position.pnl') AS REAL)) AS total
+         FROM signals WHERE type='EXIT'`
+      ).get();
+      return Number(row?.total) || 0;
+    } catch { return this.history.reduce((s, t) => s + (t.pnl || 0), 0); }
   }
 
   state() {
@@ -224,6 +217,8 @@ class StrategyEngine extends EventEmitter {
       open: Object.fromEntries([...this.positions]),
       history: this.history.slice(-20).reverse(),
       stats: this._stats(),
+      bankroll: this.bankroll(),
+      bankrollStart: this.cfg.paperBankrollStart,
     };
   }
 

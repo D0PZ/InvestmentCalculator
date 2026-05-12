@@ -135,6 +135,20 @@ raw.exec(`
     source TEXT NOT NULL DEFAULT 'mindicador.cl',
     fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS minute_bars (
+    ticker TEXT NOT NULL,
+    ts INTEGER NOT NULL,
+    open REAL NOT NULL,
+    high REAL NOT NULL,
+    low REAL NOT NULL,
+    close REAL NOT NULL,
+    volume INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'finnhub',
+    PRIMARY KEY (ticker, ts)
+  );
+  CREATE INDEX IF NOT EXISTS idx_minute_bars_ts ON minute_bars(ts);
+  CREATE INDEX IF NOT EXISTS idx_minute_bars_ticker_ts ON minute_bars(ticker, ts);
 `);
 
 const db = {

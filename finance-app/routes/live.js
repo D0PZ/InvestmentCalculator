@@ -10,6 +10,7 @@ const { fetchHistory, fetchQuotes } = require('../lib/market');
 const { getMarketState } = require('../lib/marketHours');
 const { netPositionsFromTrades } = require('../lib/portfolio');
 const { computePortfolioCorrelation } = require('../lib/correlation');
+const minuteBars = require('../lib/minuteBars');
 
 const SNAPSHOT_FLUSH_MS = 250;
 
@@ -54,6 +55,7 @@ async function bootstrap() {
   candleEngine.bindFeed(feed);
   alertEngine.bind({ candleEngine, edgarStream: edgar });
   strategy.bind({ candleEngine });
+  minuteBars.bindCandleEngine(candleEngine);
 
   strategy.on('signal', (sig) => {
     console.log('[live/signal]', sig.type, sig.symbol, sig.message);
@@ -73,12 +75,9 @@ async function bootstrap() {
         console.log(`[live/import] watchlist ampliada con ${symbolsToAdd.join(', ')}`);
         loadReferenceData(symbolsToAdd).catch(() => {});
       }
-      const loaded = strategy.loadPositionsBulk(imp.positions);
-      console.log(`[live/import] cargadas ${loaded.length} posiciones (compras: ${imp.buys}, ventas: ${imp.sells}, fx-resuelto: ${imp.withFx || 0})`);
+      console.log(`[live/import] racional.txt tracked: ${imp.positions.map(p=>p.symbol).join(', ')} (no se inyecta al bot — el bot opera independiente con su bankroll paper)`);
     } else if (imp.buys === 0 && imp.sells === 0) {
       console.log('[live/import] racional.txt vacío o sin transacciones reconocidas');
-    } else {
-      console.log(`[live/import] sin posiciones netas (${imp.buys} compras / ${imp.sells} ventas se anularon)`);
     }
   } catch (err) {
     console.error('[live/import] error:', err.message);

@@ -33,7 +33,8 @@
   const cards = new Map();
   const openPositions = new Map();
   let strategyStats = { trades: 0, wins: 0, losses: 0, winRate: null, totalPnl: 0 };
-  let strategyCfg = { capitalUSD: 100, stopPct: 0.8, targetPct: 2.0 };
+  let strategyCfg = { capitalUSD: 100, stopPct: 0.3, targetPct: 0.6, paperBankrollStart: 1000 };
+  let strategyBankroll = 1000;
 
   function fmtPrice(n) {
     return Number.isFinite(n) ? n.toFixed(2) : '—';
@@ -323,6 +324,8 @@
     const tradesEl = document.getElementById('sbTrades');
     const wrEl = document.getElementById('sbWinRate');
     const openEl = document.getElementById('sbOpen');
+    const brEl = document.getElementById('sbBankroll');
+    const brDeltaEl = document.getElementById('sbBankrollDelta');
     if (!pnlEl) return;
     const p = strategyStats.totalPnl || 0;
     const sign = p >= 0 ? '+' : '';
@@ -331,6 +334,18 @@
     tradesEl.textContent = strategyStats.trades || 0;
     wrEl.textContent = strategyStats.winRate != null ? strategyStats.winRate + '%' : '—';
     openEl.textContent = openPositions.size;
+    if (brEl) {
+      brEl.textContent = `$${strategyBankroll.toFixed(2)}`;
+      const start = strategyCfg.paperBankrollStart || 1000;
+      const delta = strategyBankroll - start;
+      const pct = start > 0 ? (delta / start) * 100 : 0;
+      brEl.className = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+      if (brDeltaEl) {
+        const dSign = delta >= 0 ? '+' : '';
+        brDeltaEl.textContent = `${dSign}$${delta.toFixed(2)} (${dSign}${pct.toFixed(2)}%)`;
+        brDeltaEl.className = 'muted-sm ' + (delta > 0 ? 'up' : delta < 0 ? 'down' : '');
+      }
+    }
   }
 
   function applySnapshots(snaps) {
@@ -422,12 +437,11 @@
     if (data.strategy) {
       strategyCfg = data.strategy.cfg || strategyCfg;
       strategyStats = data.strategy.stats || strategyStats;
+      if (Number.isFinite(data.strategy.bankroll)) strategyBankroll = data.strategy.bankroll;
       openPositions.clear();
       for (const [sym, pos] of Object.entries(data.strategy.open || {})) {
         openPositions.set(sym, pos);
       }
-      const capEl = document.querySelector('.sb-item:nth-child(2) strong');
-      if (capEl) capEl.textContent = `$${strategyCfg.capitalUSD} USD`;
     }
     applySnapshots(data.snapshots || {});
     for (const a of (data.alerts || []).slice().reverse()) pushAlert(a);
@@ -483,6 +497,7 @@
       strategyStats.totalPnl = (strategyStats.totalPnl || 0) + sig.position.pnl;
       strategyStats.winRate = strategyStats.trades > 0
         ? +(strategyStats.wins / strategyStats.trades * 100).toFixed(1) : null;
+      strategyBankroll = +(strategyBankroll + (sig.position.pnl || 0)).toFixed(2);
       flashExit(sig.symbol, sig);
       pushAlert({
         id: 'sig-' + sig.ts,
