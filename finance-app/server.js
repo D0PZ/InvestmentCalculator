@@ -52,11 +52,15 @@ app.use('/accounts', require('./routes/accounts'));
 app.use('/subscriptions', require('./routes/subscriptions'));
 app.use('/positions', require('./routes/positions'));
 app.use('/settings', require('./routes/settings'));
+app.use('/live', require('./routes/live'));
 
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).render('error', { error: err, title: 'Error' });
 });
+
+const maintenance = require('./lib/maintenance');
+maintenance.startScheduler();
 
 app.listen(PORT, () => {
   console.log(`💰 Finance app running at http://localhost:${PORT}`);

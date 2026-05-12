@@ -1,0 +1,75 @@
+<div class="live-page">
+  <div class="live-header">
+    <div>
+      <h1>Live</h1>
+      <div class="live-sub">
+        <span id="connState" class="conn-pill conn-idle">conectando…</span>
+        <span class="live-watch-label">watchlist:</span>
+        <span id="watchlistChips" class="chip-row"></span>
+      </div>
+    </div>
+    <% if (!feedReady) { %>
+      <div class="live-warning">⚠ FINNHUB_API_KEY no está en <code>.env</code>. El feed no arrancará hasta que la agregues y reinicies.</div>
+    <% } %>
+  </div>
+
+  <div id="marketBanner" class="market-banner market-<%= market.state %>" data-state="<%= market.state %>" data-next-open="<%= market.nextOpen %>" data-next-close="<%= market.nextClose %>">
+    <div class="mb-left">
+      <span class="mb-dot"></span>
+      <strong id="mbState"><%= market.state === 'open' ? 'Mercado abierto' : market.state === 'pre-market' ? 'Pre-market' : market.state === 'after-hours' ? 'After-hours' : 'Mercado cerrado' %></strong>
+      <span class="mb-ny">NY: <%= market.nyTime %></span>
+    </div>
+    <div class="mb-right">
+      <span class="mb-label" id="mbLabel"><%= market.open ? 'cierra en' : 'abre en' %></span>
+      <span class="mb-countdown" id="mbCountdown">—</span>
+    </div>
+  </div>
+
+  <div class="strategy-bar">
+    <div class="sb-item">
+      <span class="sb-label">Estrategia</span>
+      <strong>VWAP Reclaim Long</strong>
+    </div>
+    <div class="sb-item">
+      <span class="sb-label">Capital/trade</span>
+      <strong>$100 USD</strong>
+    </div>
+    <div class="sb-item">
+      <span class="sb-label">P&L hoy</span>
+      <strong id="sbPnl" class="flat">$0.00</strong>
+    </div>
+    <div class="sb-item">
+      <span class="sb-label">Trades · Win rate</span>
+      <strong><span id="sbTrades">0</span> · <span id="sbWinRate">—</span></strong>
+    </div>
+    <div class="sb-item">
+      <span class="sb-label">Posiciones abiertas</span>
+      <strong id="sbOpen">0</strong>
+    </div>
+  </div>
+
+  <details class="live-debug">
+    <summary>debug log</summary>
+    <pre id="debugLog">esperando...</pre>
+  </details>
+
+  <section class="heatmap" id="heatmap"></section>
+
+  <div class="live-grid">
+    <section class="ticker-grid" id="tickerGrid"></section>
+
+    <aside class="alerts-panel">
+      <header>
+        <h3>Alertas</h3>
+        <span id="alertsCount" class="muted-sm">0</span>
+      </header>
+      <ol id="alertsList" class="alerts-list"></ol>
+    </aside>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+  window.WATCHLIST = <%- JSON.stringify(watchlist) %>;
+</script>
+<script src="/js/live.js" defer></script>

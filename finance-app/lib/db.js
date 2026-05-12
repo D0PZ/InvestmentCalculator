@@ -87,6 +87,54 @@ raw.exec(`
     close REAL NOT NULL,
     PRIMARY KEY (ticker, date)
   );
+
+  CREATE TABLE IF NOT EXISTS trades (
+    order_id TEXT PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    side TEXT NOT NULL CHECK(side IN ('BUY','SELL')),
+    shares REAL NOT NULL,
+    price_usd REAL NOT NULL,
+    amount_usd REAL NOT NULL,
+    fx_clp REAL,
+    trade_date TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'racional.txt',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
+  CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(trade_date);
+
+  CREATE TABLE IF NOT EXISTS signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    side TEXT,
+    symbol TEXT,
+    message TEXT,
+    reason TEXT,
+    payload_json TEXT,
+    ts INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals(ts);
+  CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol);
+
+  CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT,
+    type TEXT NOT NULL,
+    severity TEXT,
+    message TEXT,
+    payload_json TEXT,
+    ts INTEGER NOT NULL,
+    dedupe_key TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_alerts_ts ON alerts(ts);
+  CREATE INDEX IF NOT EXISTS idx_alerts_symbol ON alerts(symbol);
+
+  CREATE TABLE IF NOT EXISTS fx_rates (
+    date TEXT PRIMARY KEY,
+    rate REAL NOT NULL,
+    source TEXT NOT NULL DEFAULT 'mindicador.cl',
+    fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 const db = {

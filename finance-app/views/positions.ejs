@@ -59,6 +59,18 @@
 </div>
 
 <div class="card">
+  <h3>💸 Registrar venta</h3>
+  <form method="post" action="/positions/sell" class="form-grid">
+    <label>Ticker <input type="text" name="ticker" required placeholder="MSFT" /></label>
+    <label>Monto USD <input type="number" name="usd_amount" step="0.01" min="0" required placeholder="105.71" /></label>
+    <label>Precio/acción USD <input type="number" name="price_per_share" step="0.0001" min="0" required placeholder="409.84" /></label>
+    <label>Fecha <input type="datetime-local" name="occurred_on" /></label>
+    <button type="submit" class="btn">Registrar venta</button>
+  </form>
+  <small>Valida que tengas suficientes acciones para vender. La venta queda como trade SELL con FX actual.</small>
+</div>
+
+<div class="card">
   <h3>Detalle</h3>
   <table>
     <thead>
@@ -78,7 +90,10 @@
     <tbody>
       <% positions.forEach(p => { %>
         <tr>
-          <td><strong><%= p.ticker %></strong></td>
+          <td>
+            <strong><%= p.ticker %></strong>
+            <% if (p.trade_count) { %><small style="opacity:.6">(<%= p.trade_count %>)</small><% } %>
+          </td>
           <td class="num"><%= p.shares.toFixed(7) %></td>
           <td class="num">$<%= p.avg_cost.toFixed(2) %></td>
           <td class="num">$<%= p.market_price.toFixed(2) %></td>
@@ -88,8 +103,8 @@
           <td class="num <%= p.month_return >= 0 ? 'income' : 'expense' %>" title="<%= p.month_ref_date || 'sin datos' %>"><%= pctFromRatio(p.month_return) %></td>
           <td class="num <%= p.year_return >= 0 ? 'income' : 'expense' %>" title="<%= p.year_ref_date || 'sin datos' %>"><%= pctFromRatio(p.year_return) %></td>
           <td>
-            <form method="post" action="/positions/<%= p.id %>/delete" onsubmit="return confirm('¿Eliminar?')">
-              <button class="btn btn-danger btn-sm">×</button>
+            <form method="post" action="/positions/<%= p.ticker %>/close" onsubmit="return confirm('¿Borrar todos los trades de <%= p.ticker %>? Esto es destructivo.')">
+              <button class="btn btn-danger btn-sm" title="Cerrar y borrar del historial">×</button>
             </form>
           </td>
         </tr>

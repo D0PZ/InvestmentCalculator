@@ -3,6 +3,7 @@ const path = require('path');
 const db = require('./db');
 const { fetchQuotes } = require('./market');
 const { getCurrentFX } = require('./fx');
+const { ensurePriceCacheRow } = require('./portfolio');
 
 const POSITIONS_JSON = path.join(__dirname, '..', 'stock_scorer', 'positions.json');
 
@@ -59,27 +60,28 @@ async function syncFromStockScorer() {
 }
 
 async function refreshPrices() {
-  const positions = db.prepare(`SELECT * FROM positions`).all();
-  if (positions.length === 0) return { refreshed: 0, message: 'sin posiciones' };
+  const fromPositions = db.prepare(`SELECT DISTINCT ticker FROM positions`).all().map(r => r.ticker);
+  const fromTrades = db.prepare(`
+    SELECT ticker FROM trades
+    GROUP BY ticker
+    HAVING SUM(CASE WHEN side='BUY' THEN shares ELSE -shares END) > 0.000001
+  `).all().map(r => r.ticker);
+  const tickers = [...new Set([...fromPositions, ...fromTrades])];
+  if (tickers.length === 0) return { refreshed: 0, message: 'sin posiciones ni trades' };
 
-  const tickers = [...new Set(positions.map(p => p.ticker))];
   const [quotes, fx] = await Promise.all([fetchQuotes(tickers), getCurrentFX({ force: true })]);
-  const fxRate = fx.rate || positions[0].fx_to_clp || 950;
-
-  const update = db.prepare(
-    `UPDATE positions SET market_price=?, fx_to_clp=?, updated_at=datetime('now') WHERE id=?`
-  );
+  const fxRate = fx.rate || 950;
 
   let refreshed = 0;
-  for (const p of positions) {
-    const q = quotes[p.ticker];
+  for (const t of tickers) {
+    const q = quotes[t];
     if (q?.price) {
-      update.run(q.price, fxRate, p.id);
+      ensurePriceCacheRow(t, q.price, fxRate);
       refreshed++;
     }
   }
 
-  return { refreshed, fx: fxRate, total: positions.length };
+  return { refreshed, fx: fxRate, total: tickers.length };
 }
 
 module.exports = { syncFromStockScorer, refreshPrices, readStockScorerPositions };
