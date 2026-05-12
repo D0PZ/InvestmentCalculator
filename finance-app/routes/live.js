@@ -8,6 +8,8 @@ const { getStrategyEngine } = require('../lib/strategyEngine');
 const { loadRacionalPositions } = require('../lib/racionalImporter');
 const { fetchHistory, fetchQuotes } = require('../lib/market');
 const { getMarketState } = require('../lib/marketHours');
+const { netPositionsFromTrades } = require('../lib/portfolio');
+const { computePortfolioCorrelation } = require('../lib/correlation');
 
 const SNAPSHOT_FLUSH_MS = 250;
 
@@ -199,6 +201,22 @@ router.get('/stream', async (req, res) => {
     sseClients.delete(res);
     console.log('[live/stream] SSE client closed (remaining:', sseClients.size, ')');
   });
+});
+
+router.get('/correlation', async (req, res) => {
+  await bootstrap();
+  const days = Math.max(7, Math.min(180, Number(req.query.days) || 30));
+  const positions = netPositionsFromTrades();
+  if (positions.length === 0) {
+    return res.json({ error: 'no tienes posiciones abiertas', benchmarks: {}, per_ticker: [] });
+  }
+  try {
+    const result = await computePortfolioCorrelation({ positions, benchmarks: ['SPY', 'QQQ'], days });
+    res.json(result);
+  } catch (err) {
+    console.error('[live/correlation]', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/watchlist', express.json(), async (req, res) => {

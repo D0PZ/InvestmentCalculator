@@ -53,6 +53,36 @@
     <pre id="debugLog">esperando...</pre>
   </details>
 
+  <section class="correlation-panel" id="correlationPanel" data-loaded="0">
+    <header>
+      <h3>Correlación de cartera vs índices</h3>
+      <div class="cp-controls">
+        <label>Ventana
+          <select id="corrDays">
+            <option value="14">14d</option>
+            <option value="30" selected>30d</option>
+            <option value="60">60d</option>
+            <option value="90">90d</option>
+          </select>
+        </label>
+        <button class="btn btn-sm" id="corrRefresh" type="button">↻</button>
+      </div>
+    </header>
+    <div class="cp-body">
+      <div class="cp-summary" id="cpSummary">cargando…</div>
+      <div class="cp-benchmarks" id="cpBenchmarks"></div>
+      <details class="cp-details">
+        <summary>Detalle por ticker</summary>
+        <table class="cp-table">
+          <thead>
+            <tr><th>Ticker</th><th class="num">Peso</th><th class="num">Cum</th><th class="num">corr SPY</th><th class="num">β SPY</th><th class="num">corr QQQ</th><th class="num">β QQQ</th></tr>
+          </thead>
+          <tbody id="cpTickerRows"></tbody>
+        </table>
+      </details>
+    </div>
+  </section>
+
   <section class="heatmap" id="heatmap"></section>
 
   <div class="live-grid">

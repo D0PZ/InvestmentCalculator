@@ -525,4 +525,96 @@
     dbg('SSE error · readyState=' + es.readyState);
     setConn('err', 'sin stream');
   };
+
+  // -------- Correlación vs SPY/QQQ --------
+  const corrPanel = document.getElementById('correlationPanel');
+  const corrDaysSel = document.getElementById('corrDays');
+  const corrRefreshBtn = document.getElementById('corrRefresh');
+  const cpSummary = document.getElementById('cpSummary');
+  const cpBenchmarks = document.getElementById('cpBenchmarks');
+  const cpTickerRows = document.getElementById('cpTickerRows');
+
+  function fmtPctSigned(n, digits = 2) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    return (n > 0 ? '+' : '') + (n * 100).toFixed(digits) + '%';
+  }
+  function fmtFixed(n, digits = 3) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    return n.toFixed(digits);
+  }
+  function corrLabel(c) {
+    if (c == null) return 'sin datos';
+    const a = Math.abs(c);
+    if (a < 0.2) return 'casi nula';
+    if (a < 0.4) return 'baja';
+    if (a < 0.6) return 'moderada';
+    if (a < 0.8) return 'alta';
+    return 'muy alta';
+  }
+
+  async function loadCorrelation() {
+    if (!corrPanel) return;
+    const days = corrDaysSel ? corrDaysSel.value : '30';
+    cpSummary.textContent = 'cargando…';
+    cpBenchmarks.innerHTML = '';
+    cpTickerRows.innerHTML = '';
+    try {
+      const res = await fetch('/live/correlation?days=' + encodeURIComponent(days));
+      const data = await res.json();
+      if (data.error) {
+        cpSummary.innerHTML = '<em>' + data.error + '</em>';
+        return;
+      }
+      const p = data.portfolio;
+      cpSummary.innerHTML =
+        '<div><strong>Cartera ' + (p.cumulative >= 0 ? '+' : '') + (p.cumulative * 100).toFixed(2) + '%</strong> en ' + data.observations + 'd · ' +
+        '<span class="muted-sm">vol diaria ' + (p.vol_daily * 100).toFixed(2) + '% · ventana ' + data.date_from + ' → ' + data.date_to + '</span></div>';
+
+      cpBenchmarks.innerHTML = '';
+      for (const b of Object.keys(data.benchmarks)) {
+        const x = data.benchmarks[b];
+        if (x.error) {
+          cpBenchmarks.insertAdjacentHTML('beforeend', `<div class="cp-bench"><h4>${b}</h4><em>${x.error}</em></div>`);
+          continue;
+        }
+        const corr = x.correlation;
+        const corrClass = corr == null ? '' : (Math.abs(corr) > 0.6 ? 'high' : Math.abs(corr) > 0.3 ? 'mid' : 'low');
+        cpBenchmarks.insertAdjacentHTML('beforeend', `
+          <div class="cp-bench cp-${corrClass}">
+            <h4>vs ${b} <small>${(x.cumulative_return >= 0 ? '+' : '') + (x.cumulative_return * 100).toFixed(2)}%</small></h4>
+            <div class="cp-num"><span>corr</span><strong>${fmtFixed(corr)}</strong><em>${corrLabel(corr)}</em></div>
+            <div class="cp-num"><span>β</span><strong>${fmtFixed(x.beta)}</strong></div>
+            <div class="cp-bar">
+              <div class="cp-bar-mkt" style="width:${x.market_explained_pct || 0}%" title="${x.market_explained_pct || 0}% mercado"></div>
+            </div>
+            <div class="cp-bar-legend">
+              <span>mercado: <strong>${x.market_explained_pct ?? 0}%</strong></span>
+              <span>stock-specific: <strong>${x.stock_specific_pct ?? 0}%</strong></span>
+            </div>
+          </div>
+        `);
+      }
+
+      for (const t of data.per_ticker) {
+        cpTickerRows.insertAdjacentHTML('beforeend', `
+          <tr>
+            <td><strong>${t.ticker}</strong></td>
+            <td class="num">${t.weight.toFixed(1)}%</td>
+            <td class="num ${t.cumulative >= 0 ? 'pos' : 'neg'}">${fmtPctSigned(t.cumulative)}</td>
+            <td class="num">${fmtFixed(t.corr_SPY)}</td>
+            <td class="num">${fmtFixed(t.beta_SPY)}</td>
+            <td class="num">${fmtFixed(t.corr_QQQ)}</td>
+            <td class="num">${fmtFixed(t.beta_QQQ)}</td>
+          </tr>
+        `);
+      }
+      corrPanel.dataset.loaded = '1';
+    } catch (err) {
+      cpSummary.innerHTML = '<em>Error: ' + err.message + '</em>';
+    }
+  }
+
+  if (corrRefreshBtn) corrRefreshBtn.addEventListener('click', loadCorrelation);
+  if (corrDaysSel) corrDaysSel.addEventListener('change', loadCorrelation);
+  loadCorrelation();
 })();

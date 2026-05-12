@@ -463,3 +463,74 @@ pre { background: var(--surface-2); padding: 12px; border-radius: 6px; overflow-
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ---- Correlation panel ---- */
+.correlation-panel {
+  background: var(--card-bg, #11161d);
+  border: 1px solid var(--border, #1f2632);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 16px 0;
+}
+.correlation-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.correlation-panel h3 { margin: 0; font-size: 1rem; }
+.cp-controls { display: flex; gap: 8px; align-items: center; }
+.cp-controls label { font-size: 0.85rem; opacity: 0.8; }
+.cp-summary { font-size: 0.95rem; margin-bottom: 12px; }
+.cp-benchmarks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.cp-bench {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border, #1f2632);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.cp-bench h4 { margin: 0 0 8px; font-size: 0.9rem; display: flex; justify-content: space-between; }
+.cp-bench h4 small { font-weight: normal; opacity: 0.7; }
+.cp-num { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.85rem; margin: 4px 0; }
+.cp-num span { opacity: 0.65; }
+.cp-num strong { font-size: 1.05rem; }
+.cp-num em { font-style: normal; opacity: 0.7; font-size: 0.8rem; }
+.cp-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 8px 0 4px;
+}
+.cp-bar-mkt {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  transition: width 0.3s ease;
+}
+.cp-bar-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+.cp-low .cp-num strong { color: #4ade80; }
+.cp-mid .cp-num strong { color: #fbbf24; }
+.cp-high .cp-num strong { color: #f87171; }
+.cp-details { margin-top: 10px; }
+.cp-details summary { cursor: pointer; opacity: 0.8; font-size: 0.85rem; }
+.cp-table {
+  width: 100%;
+  font-size: 0.85rem;
+  margin-top: 8px;
+  border-collapse: collapse;
+}
+.cp-table th, .cp-table td { padding: 4px 8px; border-bottom: 1px solid var(--border, #1f2632); }
+.cp-table th { text-align: left; opacity: 0.7; font-weight: 500; }
+.cp-table td.num, .cp-table th.num { text-align: right; }
+.cp-table td.pos { color: #4ade80; }
+.cp-table td.neg { color: #f87171; }
