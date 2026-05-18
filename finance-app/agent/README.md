@@ -2,17 +2,36 @@
 
 Objetivo: entrenar un agente que supere la heurística estadística del bot (VWAP-Reclaim-Scalp) usando los datos persistidos en SQLite.
 
+## Estado actual (v2 — modelo standalone)
+
+- **Datos**: 8.6M minute bars (5y Alpaca IEX) × 22 tickers
+- **Modelo universal** (LightGBM, features v2, labels target 2% / stop 0.5% / horizon 60m): AUC test = **0.79** pero **net per-trade negativo** después de comisiones (0.6% RT Racional)
+- **Modelos per-ticker** (uno por símbolo): solo 2/21 cruzan rentabilidad
+  - **TSM ✓** — AUC 0.83, winrate 67%, **net +0.48% por trade**
+  - **LLY ✓** — AUC 0.77, winrate 53%, **net +0.13% por trade** (borderline)
+  - 19 tickers no superan comisiones aunque varios tienen AUC > 0.78 — la barrera estructural es que la comisión 0.6% es alta vs el target predecible
+- **Sistema standalone** (`mlStandaloneEngine.js`): activo por defecto solo sobre tickers marcados profitable, evalúa cada minuto, persiste `ml_signals`/`ml_positions`/`ml_trades`
+
+### Para hacerlo MÁS rentable
+
+1. Reducir comisiones (broker con < 0.2% RT) — la matemática cambia totalmente
+2. Re-entrenar mensualmente con datos nuevos
+3. Agregar más tickers high-vol al watchlist y dejar que los per-ticker decidan
+
 ## Arquitectura
 
 ```
 finance-app/                       ← Node app (server + DB + live feed)
   data/finance.db                  ← SQLite (compartida)
+  lib/mlClient.js                  ← HTTP client al predict service
+  lib/strategyEngine.js            ← persiste shadow_predictions en entry/exit
   agent/                           ← Python sidecar
-    baseline.py                    ← XGBoost classifier (entry quality)
-    features.py                    ← feature engineering (RSI, VWAP, etc)
-    labels.py                      ← genera labels (WIN/LOSS oraculares)
-    backtest.py                    ← walk-forward backtester
-    serve.py                       ← FastAPI: POST /predict
+    baseline.py                    ← XGBoost: train | eval | tune (optuna)
+    predict_service.py             ← FastAPI: GET /health, POST /predict
+    features.py                    ← feature engineering
+    labels.py                      ← triple-barrier labeling
+    alpaca_backfill.py             ← backfill histórico Alpaca
+    alpaca_test.py                 ← smoke test keys
     requirements.txt
 ```
 
@@ -27,28 +46,56 @@ python -m venv .venv
 # source .venv/bin/activate     # macOS/Linux
 pip install -r requirements.txt
 
-# Entrenar baseline contra tus datos en data/finance.db
-python baseline.py train
+# (one-time) Backfill histórico Alpaca: 5y × 22 tickers ~ 8.6M bars
+python alpaca_test.py                          # verifica keys
+python alpaca_backfill.py --years 5
 
-# Backtest walk-forward (cuando lo implementes)
-python backtest.py --window 14d --tickers MSFT,NVDA
+# Entrenar modelos (v2 con features cross-asset/multi-TF + labels target 2%/stop 0.5%)
+python train_v2.py train --label-mode fixed --fixed-target 2.0 --fixed-stop 0.5 --horizon 60 --no-cv
+python train_per_ticker.py --label-mode fixed --fixed-target 2.0 --fixed-stop 0.5 --horizon 60
 
-# Servir inferencia (cuando lo implementes)
-uvicorn serve:app --port 8001
+# Backtest realista (comisiones + slippage)
+python backtest.py --threshold 0.50 --max-open 3
+
+# Servir inferencia (Node lo consume vía mlClient.js)
+uvicorn predict_service:app --host 127.0.0.1 --port 8001
 ```
 
-Después en Node, llamás:
-```js
-const { agentScore } = await fetch('http://localhost:8001/predict', { method: 'POST', body: JSON.stringify(snapshot) });
-if (agentScore > 0.6) executeEntry();
+En Node hay DOS sistemas:
+
+**Shadow mode** — `strategyEngine.js` (heurístico) llama a `/predict` después de cada ENTRY suya y persiste a `shadow_predictions` para auditar.
+
+**Standalone mode** — `mlStandaloneEngine.js` corre independiente: cada `ML_STANDALONE_INTERVAL_MS` evalúa el watchlist, abre trades cuando prob > threshold (per-ticker), persiste a `ml_signals`/`ml_positions`/`ml_trades`. Por defecto opera **solo en tickers marcados profitable**.
+
+Vars de entorno:
 ```
+ML_PREDICT_URL=http://127.0.0.1:8001
+ML_PREDICT_ENABLED=true
+ML_PREDICT_TIMEOUT_MS=2500
+
+ML_STANDALONE_ENABLED=true
+ML_STANDALONE_INTERVAL_MS=60000
+ML_STANDALONE_THRESHOLD=                  # vacío = usar el per-ticker guardado
+ML_STANDALONE_CAPITAL_USD=100
+ML_STANDALONE_MAX_OPEN=3
+ML_STANDALONE_COMMISSION_PCT=0.6
+ML_STANDALONE_SLIPPAGE_PCT=0.05
+ML_STANDALONE_WHITELIST=                  # ej "TSM,LLY" — si vacío usa onlyProfitable
+ML_STANDALONE_ONLY_PROFITABLE=true        # solo tickers con per-ticker model rentable
+```
+
+Rutas Node:
+- `GET /live/ml/state` — config + posiciones abiertas + stats
+- `GET /live/ml/trades?limit=N` — historial de trades cerrados
+- `GET /live/ml/signals?limit=N` — historial de signals ENTRY/EXIT
 
 ## Datos disponibles en `data/finance.db`
 
 | Tabla | Filas (esperado) | Uso |
 |-------|------------------|-----|
-| `minute_bars` | ~150K+ después del backfill | velas 1m OHLCV (`finnhub` live + `yahoo` backfill) |
+| `minute_bars` | ~8.6M con Alpaca 5y | velas 1m OHLCV (`alpaca` > `yahoo` > `finnhub`) |
 | `signals` | crece con cada trade | labels reales del bot (WIN/LOSS/BE) |
+| `shadow_predictions` | 1 row por ENTRY del bot | prob ML + outcome real para tracking |
 | `alerts` | eventos discretos | features de evento (rvolSpike, gap, etc) |
 | `trades` | tus compras reales | benchmark personal |
 | `price_history` | cierre diario | contexto multi-día |

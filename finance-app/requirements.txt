@@ -1,11 +1,21 @@
-plotly
-pandas
-numpy
-requests
-yfinance
-feedparser
-xgboost
-scikit-learn
-rich
-fastapi
-uvicorn[standard]
+# Agent ML — Python deps pinneadas para reproducibilidad de builds.
+# Refresh via: agent/.venv/Scripts/python.exe -m pip freeze
+numpy==2.4.4
+pandas==3.0.3
+scikit-learn==1.8.0
+xgboost==3.2.0
+lightgbm==4.6.0
+optuna==4.8.0
+joblib==1.5.3
+
+# Predict service
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+pydantic==2.13.4
+
+# Market data
+alpaca-py==0.43.4
+requests==2.34.0
+
+# Utils
+python-dotenv==1.2.2

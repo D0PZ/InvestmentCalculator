@@ -18,7 +18,7 @@
       <a href="/live" class="<%= currentPath.startsWith('/live') ? 'active' : '' %>">Live</a>
       <a href="/settings" class="<%= currentPath.startsWith('/settings') ? 'active' : '' %>">⚙</a>
     </div>
-    <form method="post" action="/logout" style="margin-left:auto"><button class="btn btn-sm">Salir</button></form>
+    <form method="post" action="/logout" style="margin-left:auto"><%- csrfInput %><button class="btn btn-sm">Salir</button></form>
   </nav>
   <main class="container">
     <%- body %>

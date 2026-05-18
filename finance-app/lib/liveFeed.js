@@ -15,10 +15,14 @@ const DEFAULT_WATCHLIST = [
   'LLY', 'UNH', 'V', 'COST',
 ];
 
+const TICKER_RE = /^[A-Z]{1,6}(?:\.[A-Z]{1,3})?$/;
 function parseWatchlist(raw) {
   if (!raw) return [];
   return [...new Set(
-    raw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
+    raw.split(',')
+      .map(s => s.trim().toUpperCase())
+      .filter(Boolean)
+      .filter(s => TICKER_RE.test(s))
   )];
 }
 

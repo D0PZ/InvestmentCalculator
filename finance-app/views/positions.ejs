@@ -7,8 +7,7 @@
         <% if (fx.fallback) { %>· <em style="color:var(--warn)">fallback</em><% } %>
       </small>
     <% } %>
-    <form method="post" action="/positions/sync" style="display:inline"><button class="btn">⬇ Sync stock_scorer</button></form>
-    <form method="post" action="/positions/refresh" style="display:inline"><button class="btn">↻ Refresh precios</button></form>
+    <form method="post" action="/positions/refresh" style="display:inline"><%- csrfInput %><button class="btn">↻ Refresh precios</button></form>
     <div class="big-num accent"><%= clp(total) %></div>
   </div>
 </div>
@@ -39,7 +38,7 @@
 
 <div class="card">
   <h3>🛒 Registrar compra</h3>
-  <form method="post" action="/positions/buy" class="form-grid">
+  <form method="post" action="/positions/buy" class="form-grid"><%- csrfInput %>
     <label>Ticker <input type="text" name="ticker" required placeholder="MSFT" /></label>
     <label>Monto USD <input type="number" name="usd_amount" step="0.01" min="0" required placeholder="22.00" /></label>
     <label>Precio/acción USD <input type="number" name="price_per_share" step="0.0001" min="0" required placeholder="412.77" /></label>
@@ -60,7 +59,7 @@
 
 <div class="card">
   <h3>💸 Registrar venta</h3>
-  <form method="post" action="/positions/sell" class="form-grid">
+  <form method="post" action="/positions/sell" class="form-grid"><%- csrfInput %>
     <label>Ticker <input type="text" name="ticker" required placeholder="MSFT" /></label>
     <label>Monto USD <input type="number" name="usd_amount" step="0.01" min="0" required placeholder="105.71" /></label>
     <label>Precio/acción USD <input type="number" name="price_per_share" step="0.0001" min="0" required placeholder="409.84" /></label>
@@ -104,6 +103,7 @@
           <td class="num <%= p.year_return >= 0 ? 'income' : 'expense' %>" title="<%= p.year_ref_date || 'sin datos' %>"><%= pctFromRatio(p.year_return) %></td>
           <td>
             <form method="post" action="/positions/<%= p.ticker %>/close" onsubmit="return confirm('¿Borrar todos los trades de <%= p.ticker %>? Esto es destructivo.')">
+              <%- csrfInput %>
               <button class="btn btn-danger btn-sm" title="Cerrar y borrar del historial">×</button>
             </form>
           </td>

@@ -1,8 +1,12 @@
 <div class="page-header"><h1>Cuentas</h1></div>
 
+<% if (typeof flash !== 'undefined' && flash) { %>
+  <div class="tip tip-<%= flash.type === 'good' ? 'good' : 'danger' %>"><strong><%= flash.text %></strong></div>
+<% } %>
+
 <div class="card">
   <h3>Agregar cuenta</h3>
-  <form method="post" action="/accounts" class="form-grid">
+  <form method="post" action="/accounts" class="form-grid"><%- csrfInput %>
     <label>Nombre <input type="text" name="name" required /></label>
     <label>Tipo
       <select name="type" required>
@@ -25,7 +29,7 @@
     <div class="account-header">
       <h3><%= a.name %> <span class="tag tag-<%= a.type %>"><%= a.type %></span></h3>
     </div>
-    <form method="post" action="/accounts/<%= a.id %>/update" class="form-grid">
+    <form method="post" action="/accounts/<%= a.id %>/update" class="form-grid"><%- csrfInput %>
       <label>Saldo <input type="number" name="balance" value="<%= a.balance %>" step="1" /></label>
       <% if (a.type === 'credit') { %>
         <label>Cupo total <input type="number" name="credit_limit" value="<%= a.credit_limit || 0 %>" step="1" /></label>
@@ -43,7 +47,7 @@
       </div>
       <small>Disponible: <%= clp(a.credit_limit - (a.credit_used||0)) %> de <%= clp(a.credit_limit) %></small>
     <% } %>
-    <form method="post" action="/accounts/<%= a.id %>/delete" onsubmit="return confirm('¿Eliminar?')" style="margin-top:10px">
+    <form method="post" action="/accounts/<%= a.id %>/delete" onsubmit="return confirm('¿Eliminar?')" style="margin-top:10px"><%- csrfInput %>
       <button class="btn btn-danger btn-sm">Eliminar cuenta</button>
     </form>
   </div>

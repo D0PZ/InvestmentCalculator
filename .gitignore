@@ -21,3 +21,13 @@ node_modules/
 
 # Leftover root dir from repo restructure (cache.db locked at move time)
 /stock_scorer/
+
+# Claude Code local notes
+.claude/
+
+# Personal financial data exports (NOT to be published)
+finance-app/data/*.txt
+finance-app/data/*.csv
+
+# ML dataset caches (regenerables desde minute_bars, varios GB)
+finance-app/agent/models/*.parquet

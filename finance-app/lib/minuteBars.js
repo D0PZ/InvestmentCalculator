@@ -52,6 +52,19 @@ function rangeForTicker(ticker, fromTs, toTs) {
   ).all(ticker, fromTs, toTs);
 }
 
+function recentBars(ticker, n = 120, beforeTs = null) {
+  const rows = beforeTs
+    ? db.prepare(
+        `SELECT ts, open, high, low, close, volume FROM minute_bars
+         WHERE ticker=? AND ts<=? ORDER BY ts DESC LIMIT ?`
+      ).all(ticker, beforeTs, n)
+    : db.prepare(
+        `SELECT ts, open, high, low, close, volume FROM minute_bars
+         WHERE ticker=? ORDER BY ts DESC LIMIT ?`
+      ).all(ticker, n);
+  return rows.reverse();
+}
+
 function statsByTicker() {
   return db.prepare(`
     SELECT ticker,
@@ -79,6 +92,7 @@ module.exports = {
   upsertBar,
   upsertBatch,
   rangeForTicker,
+  recentBars,
   statsByTicker,
   bindCandleEngine,
 };

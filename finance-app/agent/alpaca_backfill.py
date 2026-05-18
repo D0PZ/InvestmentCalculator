@@ -33,8 +33,9 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT.parent / "data" / "finance.db"
-ENV_PATH = ROOT / ".env"
+ENV_PATH = ROOT.parent / ".env"
 load_dotenv(ENV_PATH)
+load_dotenv(ROOT / ".env", override=True)
 
 API_KEY = os.getenv("ALPACA_API_KEY", "").strip()
 API_SECRET = os.getenv("ALPACA_SECRET", "").strip()

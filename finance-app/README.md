@@ -23,12 +23,13 @@ Abre http://localhost:3000
 ## Estructura
 
 - `server.js` — entry point Express
-- `lib/db.js` — SQLite schema (better-sqlite3, sincrónico)
+- `lib/db.js` — SQLite schema (`node:sqlite`, sincrónico)
 - `lib/health.js` — score de salud financiera + tips
 - `lib/format.js` — helpers CLP / fechas
-- `routes/` — dashboard, transactions, accounts, subscriptions, positions
+- `routes/` — dashboard, transactions, accounts, subscriptions, positions, live
 - `views/` — EJS con layout compartido
 - `public/css/style.css` — tema dark
+- `agent/` — agente ML (Python) para predicciones intradía sobre minute_bars
 
 ## Auth
 
@@ -40,10 +41,10 @@ En producción **siempre** setear `SESSION_SECRET` largo en `.env` y `NODE_ENV=p
 ## Stock prices
 
 En `/positions`:
-- **⬇ Sync stock_scorer** — lee `../stock_scorer/positions.json` y crea/actualiza posiciones con precio live.
-- **↻ Refresh precios** — actualiza precios de las posiciones existentes.
+- **↻ Refresh precios** — actualiza precios de las posiciones existentes desde Yahoo Finance.
 
-Datos de mercado vienen de Yahoo Finance v7 (sin API key). FX USD/CLP via `USDCLP=X`.
+Datos de mercado vienen de Yahoo Finance v7 (sin API key). FX USD/CLP via `USDCLP=X`. Minute bars
+live vienen de Alpaca paper (IEX feed) — ver `agent/README.md`.
 
 ## Próximos pasos sugeridos
 

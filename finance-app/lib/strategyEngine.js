@@ -1,5 +1,7 @@
 const { EventEmitter } = require('node:events');
 const db = require('./db');
+const mlClient = require('./mlClient');
+const { recentBars } = require('./minuteBars');
 
 const DEFAULTS = {
   paperBankrollStart: 1000,
@@ -36,6 +38,9 @@ class StrategyEngine extends EventEmitter {
     this.history = [];
     this.lastVwapSide = new Map();
     this.cooldownUntil = new Map();
+    this._boundCandle = null;
+    this._candleListener = null;
+    this._destroyed = false;
     this._hydrateHistory();
   }
 
@@ -54,9 +59,9 @@ class StrategyEngine extends EventEmitter {
   }
 
   _persistSignal(sig) {
-    if (sig.type === 'IMPORT') return;
+    if (sig.type === 'IMPORT') return null;
     try {
-      db.prepare(
+      const info = db.prepare(
         `INSERT INTO signals (type, side, symbol, message, reason, payload_json, ts)
          VALUES (?, ?, ?, ?, ?, ?, ?)`
       ).run(
@@ -68,17 +73,119 @@ class StrategyEngine extends EventEmitter {
         JSON.stringify(sig),
         sig.ts || Date.now(),
       );
+      return Number(info?.lastInsertRowid) || null;
+    } catch { return null; }
+  }
+
+  _recordShadowPrediction(position, signalId) {
+    if (!mlClient.ENABLED) return;
+    const { symbol, entry, openTs } = position;
+
+    let rowId = null;
+    try {
+      const info = db.prepare(
+        `INSERT INTO shadow_predictions
+           (symbol, entry_ts, entry_price, signal_id, predict_status)
+         VALUES (?, ?, ?, ?, 'pending')`
+      ).run(symbol, openTs, entry, signalId);
+      rowId = Number(info?.lastInsertRowid) || null;
+    } catch { return; }
+    if (!rowId) return;
+
+    setImmediate(async () => {
+      try {
+        const bars = recentBars(symbol, 120, openTs);
+        if (!bars || bars.length < 60) {
+          db.prepare(`UPDATE shadow_predictions SET predict_status='skipped_no_bars' WHERE id=?`).run(rowId);
+          return;
+        }
+        const payload = bars.map(b => ({
+          t: b.ts, o: b.open, h: b.high, l: b.low, c: b.close, v: b.volume,
+        }));
+        const resp = await mlClient.predict({ symbol, bars: payload });
+        if (!resp || resp.ok === false || typeof resp.prob !== 'number') {
+          const status = resp?.error ? `error: ${String(resp.error).slice(0, 80)}` : 'no_prob';
+          db.prepare(`UPDATE shadow_predictions SET predict_status=? WHERE id=?`).run(status, rowId);
+          return;
+        }
+        db.prepare(
+          `UPDATE shadow_predictions
+              SET prob=?, model_meta_json=?, features_json=?, predict_status='done'
+            WHERE id=?`
+        ).run(
+          resp.prob,
+          JSON.stringify(resp.meta || null),
+          JSON.stringify(resp.feature_snapshot || null),
+          rowId,
+        );
+      } catch (err) {
+        try {
+          db.prepare(`UPDATE shadow_predictions SET predict_status=? WHERE id=?`)
+            .run(`exception: ${String(err.message || err).slice(0, 80)}`, rowId);
+        } catch {}
+      }
+    });
+  }
+
+  _resolveShadowPrediction(closed) {
+    if (!mlClient.ENABLED) return;
+    try {
+      db.prepare(
+        `UPDATE shadow_predictions
+           SET outcome=?, exit_ts=?, exit_price=?, pnl_pct=?
+         WHERE id = (
+           SELECT id FROM shadow_predictions
+            WHERE symbol=? AND entry_ts=? AND outcome IS NULL
+            ORDER BY id DESC LIMIT 1
+         )`
+      ).run(
+        closed.result || null,
+        closed.exitTs || null,
+        closed.exit || null,
+        closed.pnlPct || null,
+        closed.symbol,
+        closed.openTs,
+      );
     } catch {}
   }
 
   emit(eventName, payload) {
-    if (eventName === 'signal' && payload) this._persistSignal(payload);
+    if (eventName === 'signal' && payload) {
+      const signalId = this._persistSignal(payload);
+      if (payload.type === 'ENTRY' && payload.position) {
+        this._recordShadowPrediction(payload.position, signalId);
+      } else if (payload.type === 'EXIT' && payload.position) {
+        this._resolveShadowPrediction(payload.position);
+      }
+    }
     return super.emit(eventName, payload);
   }
 
   bind({ candleEngine }) {
-    if (!candleEngine) return;
-    candleEngine.on('update', ({ symbol, snapshot }) => this.evaluate(symbol, snapshot));
+    if (!candleEngine || this._destroyed) return;
+    if (this._boundCandle) this._unbindCandle();
+    this._candleListener = ({ symbol, snapshot }) => this.evaluate(symbol, snapshot);
+    candleEngine.on('update', this._candleListener);
+    this._boundCandle = candleEngine;
+  }
+
+  _unbindCandle() {
+    if (this._boundCandle && this._candleListener) {
+      try { this._boundCandle.off('update', this._candleListener); } catch {}
+    }
+    this._boundCandle = null;
+    this._candleListener = null;
+  }
+
+  destroy() {
+    if (this._destroyed) return;
+    this._destroyed = true;
+    this._unbindCandle();
+    this.removeAllListeners();
+    this.positions.clear();
+    this.lastVwapSide.clear();
+    this.cooldownUntil.clear();
+    this.history.length = 0;
   }
 
   evaluate(symbol, snap) {
@@ -246,4 +353,11 @@ function getStrategyEngine() {
   return singleton;
 }
 
-module.exports = { StrategyEngine, getStrategyEngine };
+function resetStrategyEngine() {
+  if (singleton) {
+    singleton.destroy();
+    singleton = null;
+  }
+}
+
+module.exports = { StrategyEngine, getStrategyEngine, resetStrategyEngine };

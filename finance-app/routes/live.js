@@ -5,12 +5,15 @@ const { getCandleEngine } = require('../lib/candleEngine');
 const { getEdgarStream } = require('../lib/edgarStream');
 const { getAlertEngine } = require('../lib/alertEngine');
 const { getStrategyEngine } = require('../lib/strategyEngine');
+const { getMLStandaloneEngine } = require('../lib/mlStandaloneEngine');
 const { loadRacionalPositions } = require('../lib/racionalImporter');
 const { fetchHistory, fetchQuotes } = require('../lib/market');
 const { getMarketState } = require('../lib/marketHours');
 const { netPositionsFromTrades } = require('../lib/portfolio');
 const { computePortfolioCorrelation } = require('../lib/correlation');
 const minuteBars = require('../lib/minuteBars');
+const mlClient = require('../lib/mlClient');
+const log = require('../lib/logger').child('live');
 
 const SNAPSHOT_FLUSH_MS = 250;
 
@@ -20,6 +23,7 @@ const candleEngine = getCandleEngine();
 const edgar = getEdgarStream({ watchlist: feed.watchlist });
 const alertEngine = getAlertEngine();
 const strategy = getStrategyEngine();
+const mlStandalone = getMLStandaloneEngine();
 
 const sseClients = new Set();
 const pendingSnapshots = new Map();
@@ -27,9 +31,11 @@ let flushTimer = null;
 
 function broadcast(event, payload) {
   const data = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+  const dead = [];
   for (const res of sseClients) {
-    try { res.write(data); } catch {}
+    try { res.write(data); } catch { dead.push(res); }
   }
+  for (const res of dead) sseClients.delete(res);
 }
 
 function scheduleFlush() {
@@ -48,18 +54,30 @@ async function bootstrap() {
   if (bootstrapped) return;
   bootstrapped = true;
 
-  console.log('[live/bootstrap] FINNHUB_API_KEY set:', !!process.env.FINNHUB_API_KEY,
-    '| LIVE_WATCHLIST env:', JSON.stringify(process.env.LIVE_WATCHLIST),
-    '| resolved watchlist:', JSON.stringify(feed.watchlist));
+  log.info({
+    finnhubKey: !!process.env.FINNHUB_API_KEY,
+    envWatchlist: process.env.LIVE_WATCHLIST,
+    resolvedWatchlist: feed.watchlist,
+  }, 'bootstrap');
 
   candleEngine.bindFeed(feed);
   alertEngine.bind({ candleEngine, edgarStream: edgar });
   strategy.bind({ candleEngine });
   minuteBars.bindCandleEngine(candleEngine);
 
+  mlClient.probeOnBoot().catch(err => log.error({ err }, 'mlClient probe failed'));
+
   strategy.on('signal', (sig) => {
-    console.log('[live/signal]', sig.type, sig.symbol, sig.message);
+    log.info({ type: sig.type, symbol: sig.symbol, msg: sig.message }, 'strategy signal');
     broadcast('signal', sig);
+  });
+
+  mlStandalone.bind({ candleEngine, watchlist: feed.watchlist }).catch(e => {
+    log.error({ err: e }, 'mlStandalone bind failed');
+  });
+  mlStandalone.on('signal', (sig) => {
+    log.info({ type: sig.type, symbol: sig.symbol, msg: sig.message }, 'ml signal');
+    broadcast('ml_signal', sig);
   });
 
   try {
@@ -72,27 +90,27 @@ async function bootstrap() {
         const newWatchlist = [...feed.watchlist, ...symbolsToAdd];
         feed.setWatchlist(newWatchlist);
         edgar.setWatchlist(newWatchlist);
-        console.log(`[live/import] watchlist ampliada con ${symbolsToAdd.join(', ')}`);
+        log.info({ added: symbolsToAdd }, 'watchlist ampliada por racional.txt');
         loadReferenceData(symbolsToAdd).catch(() => {});
       }
-      console.log(`[live/import] racional.txt tracked: ${imp.positions.map(p=>p.symbol).join(', ')} (no se inyecta al bot — el bot opera independiente con su bankroll paper)`);
+      log.info({ tracked: imp.positions.map(p => p.symbol) }, 'racional.txt tracked');
     } else if (imp.buys === 0 && imp.sells === 0) {
-      console.log('[live/import] racional.txt vacío o sin transacciones reconocidas');
+      log.info('racional.txt vacío o sin transacciones reconocidas');
     }
   } catch (err) {
-    console.error('[live/import] error:', err.message);
+    log.error({ err }, 'racional import failed');
   }
 
   feed.on('status', (s) => {
-    console.log('[live/feed]', s.state, s.message || s.reason || '');
+    log.info({ state: s.state, msg: s.message || s.reason }, 'feed status');
     broadcast('status', { source: 'feed', ...s });
   });
   edgar.on('status', (s) => {
-    console.log('[live/edgar]', s.state, s.message || '');
+    log.info({ state: s.state, msg: s.message }, 'edgar status');
     broadcast('status', { source: 'edgar', ...s });
   });
   edgar.on('filing', (f) => {
-    console.log('[live/filing]', f.symbol, f.title);
+    log.info({ symbol: f.symbol, title: f.title }, 'edgar filing');
     broadcast('filing', f);
   });
 
@@ -100,7 +118,7 @@ async function bootstrap() {
   feed.on('tick', (t) => {
     if (Date.now() - lastTickLogAt > 5000) {
       lastTickLogAt = Date.now();
-      console.log('[live/tick]', t.symbol, t.price, '@', new Date(t.ts).toISOString());
+      log.debug({ symbol: t.symbol, price: t.price, ts: t.ts }, 'tick');
     }
   });
 
@@ -115,7 +133,7 @@ async function bootstrap() {
   edgar.start();
   feed.start();
 
-  loadReferenceData(feed.watchlist).catch(err => console.error('reference data load failed', err));
+  loadReferenceData(feed.watchlist).catch(err => log.error({ err }, 'reference data load failed'));
 }
 
 async function loadReferenceData(symbols) {
@@ -132,7 +150,7 @@ async function loadReferenceData(symbols) {
         candleEngine.setReferenceData(symbol, { prevClose });
       }
     } catch (err) {
-      console.error(`history load failed for ${symbol}`, err.message);
+      log.warn({ symbol, err: err.message }, 'history load failed');
     }
   }
 
@@ -142,7 +160,7 @@ async function loadReferenceData(symbols) {
       candleEngine.setReferenceData(sym, { prevClose: q.previousClose });
     }
   } catch (err) {
-    console.error('quotes prime failed', err.message);
+    log.warn({ err: err.message }, 'quotes prime failed');
   }
 }
 
@@ -164,12 +182,39 @@ router.get('/state', async (req, res) => {
     alerts: alertEngine.getRecent(50),
     feedConnected: feed.connected,
     strategy: strategy.state(),
+    mlStandalone: mlStandalone.state(),
+    mlClient: mlClient.getHealthState(),
     market: getMarketState(),
   });
 });
 
+router.get('/ml/state', async (req, res) => {
+  await bootstrap();
+  res.json(mlStandalone.state());
+});
+
+router.get('/ml/trades', async (req, res) => {
+  await bootstrap();
+  const limit = Math.min(Number(req.query.limit) || 50, 500);
+  const db = require('../lib/db');
+  const trades = db.prepare(
+    `SELECT * FROM ml_trades ORDER BY exit_ts DESC LIMIT ?`
+  ).all(limit);
+  res.json({ trades });
+});
+
+router.get('/ml/signals', async (req, res) => {
+  await bootstrap();
+  const limit = Math.min(Number(req.query.limit) || 50, 500);
+  const db = require('../lib/db');
+  const signals = db.prepare(
+    `SELECT * FROM ml_signals ORDER BY ts DESC LIMIT ?`
+  ).all(limit);
+  res.json({ signals });
+});
+
 router.get('/stream', async (req, res) => {
-  console.log('[live/stream] SSE client connecting from', req.ip);
+  log.debug({ ip: req.ip }, 'SSE client connecting');
   await bootstrap();
   res.set({
     'Content-Type': 'text/event-stream',
@@ -190,16 +235,29 @@ router.get('/stream', async (req, res) => {
   })}\n\n`);
 
   sseClients.add(res);
-  console.log('[live/stream] SSE client added (total now:', sseClients.size, ', feed.connected:', feed.connected, ')');
-  const ping = setInterval(() => {
-    try { res.write(`: ping ${Date.now()}\n\n`); } catch {}
+  log.debug({ total: sseClients.size, feedConnected: feed.connected }, 'SSE client added');
+
+  let cleanedUp = false;
+  let ping = null;
+  const cleanup = (reason) => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    if (ping) clearInterval(ping);
+    sseClients.delete(res);
+    log.debug({ reason, remaining: sseClients.size }, 'SSE client cleanup');
+  };
+
+  ping = setInterval(() => {
+    try {
+      res.write(`: ping ${Date.now()}\n\n`);
+    } catch (err) {
+      cleanup('ping write failed: ' + err.message);
+    }
   }, 15000);
 
-  req.on('close', () => {
-    clearInterval(ping);
-    sseClients.delete(res);
-    console.log('[live/stream] SSE client closed (remaining:', sseClients.size, ')');
-  });
+  req.on('close', () => cleanup('req close'));
+  req.on('error', (err) => cleanup('req error: ' + err.message));
+  res.on('error', (err) => cleanup('res error: ' + err.message));
 });
 
 router.get('/correlation', async (req, res) => {
@@ -213,7 +271,7 @@ router.get('/correlation', async (req, res) => {
     const result = await computePortfolioCorrelation({ positions, benchmarks: ['SPY', 'QQQ'], days });
     res.json(result);
   } catch (err) {
-    console.error('[live/correlation]', err);
+    log.error({ err }, 'correlation failed');
     res.status(500).json({ error: err.message });
   }
 });

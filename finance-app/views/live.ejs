@@ -105,6 +105,6 @@
 
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <script>
-  window.WATCHLIST = <%- JSON.stringify(watchlist) %>;
+  window.WATCHLIST = <%- safeJson(watchlist) %>;
 </script>
 <script src="/js/live.js" defer></script>

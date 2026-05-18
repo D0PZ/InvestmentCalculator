@@ -1,24 +1,32 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../lib/db');
+const accounts = require('../lib/repositories/accountRepository');
 const { todayISO } = require('../lib/format');
+const {
+  ValidationError, TX_KINDS,
+  requireEnum, requireInt, optionalInt, optionalString, optionalISODate,
+} = require('../lib/validators');
 
-function applyAccountEffect(accountId, kind, amount, sign) {
-  if (!accountId) return;
-  const acc = db.prepare(`SELECT * FROM accounts WHERE id=?`).get(Number(accountId));
-  if (!acc) return;
-  const amt = Math.round(Number(amount));
-  if (acc.type === 'credit') {
-    const delta = (kind === 'expense' ? amt : -amt) * sign;
-    db.prepare(`UPDATE accounts SET credit_used = COALESCE(credit_used,0) + ?, updated_at=datetime('now') WHERE id=?`).run(delta, acc.id);
-  } else {
-    const delta = (kind === 'income' ? amt : -amt) * sign;
-    db.prepare(`UPDATE accounts SET balance = balance + ?, updated_at=datetime('now') WHERE id=?`).run(delta, acc.id);
-  }
+function parseTransaction(body) {
+  return {
+    kind: requireEnum(body.kind, 'kind', TX_KINDS),
+    amount: requireInt(body.amount, 'amount', { min: -1e12, max: 1e12 }),
+    category: optionalString(body.category, 'category', { max: 60 }),
+    description: optionalString(body.description, 'description', { max: 200 }),
+    account_id: optionalInt(body.account_id, 'account_id', { min: 1 }),
+    occurred_on: optionalISODate(body.occurred_on, 'occurred_on') || todayISO(),
+  };
+}
+
+function flashAndBack(req, res, err) {
+  if (req.session) req.session.flash = { type: 'bad', text: err.message };
+  res.redirect('/transactions');
 }
 
 router.get('/', (req, res) => {
-  const { category, kind, q } = req.query;
+  const { category, kind } = req.query;
+  const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 100) : '';
   let sql = `SELECT t.*, a.name AS account_name FROM transactions t
              LEFT JOIN accounts a ON a.id = t.account_id WHERE 1=1`;
   const params = [];
@@ -28,61 +36,79 @@ router.get('/', (req, res) => {
   sql += ` ORDER BY occurred_on DESC, t.id DESC LIMIT 200`;
 
   const rows = db.prepare(sql).all(...params);
-  const accounts = db.prepare(`SELECT * FROM accounts ORDER BY name`).all();
   const categories = db.prepare(
     `SELECT DISTINCT category FROM transactions WHERE category IS NOT NULL AND category!='' ORDER BY category`
   ).all().map(r => r.category);
 
+  const flash = req.session?.flash || null;
+  if (req.session) req.session.flash = null;
+
   res.render('transactions', {
-    rows, accounts, categories,
+    rows,
+    accounts: accounts.listByName(),
+    categories,
     today: todayISO(),
-    filters: { category: category || '', kind: kind || '', q: q || '' },
+    filters: { category: category || '', kind: kind || '', q },
+    flash,
     title: 'Movimientos',
   });
 });
 
 router.post('/', (req, res) => {
-  const { kind, amount, category, description, account_id, occurred_on } = req.body;
-  const amt = Math.round(Number(amount));
-  const result = db.prepare(
+  let parsed;
+  try { parsed = parseTransaction(req.body); }
+  catch (e) {
+    if (e instanceof ValidationError) return flashAndBack(req, res, e);
+    throw e;
+  }
+  db.prepare(
     `INSERT INTO transactions (kind, amount, category, description, account_id, occurred_on)
      VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(kind, amt, category || null, description || null, account_id ? Number(account_id) : null, occurred_on || todayISO());
+  ).run(parsed.kind, parsed.amount, parsed.category, parsed.description, parsed.account_id, parsed.occurred_on);
 
-  applyAccountEffect(account_id, kind, amt, 1);
+  accounts.applyMovement(parsed.account_id, parsed.kind, parsed.amount, 1);
   res.redirect('/transactions');
 });
 
 router.get('/:id/edit', (req, res) => {
-  const tx = db.prepare(`SELECT * FROM transactions WHERE id=?`).get(Number(req.params.id));
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) return res.redirect('/transactions');
+  const tx = db.prepare(`SELECT * FROM transactions WHERE id=?`).get(id);
   if (!tx) return res.redirect('/transactions');
-  const accounts = db.prepare(`SELECT * FROM accounts ORDER BY name`).all();
-  res.render('transaction_edit', { tx, accounts, title: 'Editar movimiento' });
+  res.render('transaction_edit', { tx, accounts: accounts.listByName(), title: 'Editar movimiento' });
 });
 
 router.post('/:id/update', (req, res) => {
-  const id = Number(req.params.id);
+  let id, parsed;
+  try {
+    id = requireInt(req.params.id, 'id', { min: 1 });
+    parsed = parseTransaction(req.body);
+  } catch (e) {
+    if (e instanceof ValidationError) return flashAndBack(req, res, e);
+    throw e;
+  }
   const old = db.prepare(`SELECT * FROM transactions WHERE id=?`).get(id);
   if (!old) return res.redirect('/transactions');
 
-  const { kind, amount, category, description, account_id, occurred_on } = req.body;
-  const newAmount = Math.round(Number(amount));
-  const newAccountId = account_id ? Number(account_id) : null;
-
-  applyAccountEffect(old.account_id, old.kind, old.amount, -1);
+  accounts.applyMovement(old.account_id, old.kind, old.amount, -1);
 
   db.prepare(
     `UPDATE transactions SET kind=?, amount=?, category=?, description=?, account_id=?, occurred_on=? WHERE id=?`
-  ).run(kind, newAmount, category || null, description || null, newAccountId, occurred_on || old.occurred_on, id);
+  ).run(parsed.kind, parsed.amount, parsed.category, parsed.description, parsed.account_id, parsed.occurred_on, id);
 
-  applyAccountEffect(newAccountId, kind, newAmount, 1);
+  accounts.applyMovement(parsed.account_id, parsed.kind, parsed.amount, 1);
   res.redirect('/transactions');
 });
 
 router.post('/:id/delete', (req, res) => {
-  const id = Number(req.params.id);
+  let id;
+  try { id = requireInt(req.params.id, 'id', { min: 1 }); }
+  catch (e) {
+    if (e instanceof ValidationError) return flashAndBack(req, res, e);
+    throw e;
+  }
   const old = db.prepare(`SELECT * FROM transactions WHERE id=?`).get(id);
-  if (old) applyAccountEffect(old.account_id, old.kind, old.amount, -1);
+  if (old) accounts.applyMovement(old.account_id, old.kind, old.amount, -1);
   db.prepare(`DELETE FROM transactions WHERE id=?`).run(id);
   res.redirect('/transactions');
 });

@@ -1,7 +1,7 @@
 <div class="auth-card">
   <h1>💰 Finanzas</h1>
   <% if (error) { %><div class="tip tip-danger"><strong><%= error %></strong></div><% } %>
-  <form method="post" action="/login" class="form-grid" style="grid-template-columns:1fr">
+  <form method="post" action="/login" class="form-grid" style="grid-template-columns:1fr"><%- csrfInput %>
     <label>Contraseña <input type="password" name="password" autofocus required /></label>
     <button type="submit" class="btn btn-primary">Entrar</button>
   </form>

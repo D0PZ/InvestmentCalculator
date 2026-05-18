@@ -2,7 +2,7 @@
   <h1>💰 Configurar acceso</h1>
   <p>Define una contraseña para proteger tu dashboard. Mínimo 8 caracteres.</p>
   <% if (error) { %><div class="tip tip-danger"><strong><%= error %></strong></div><% } %>
-  <form method="post" action="/setup" class="form-grid" style="grid-template-columns:1fr">
+  <form method="post" action="/setup" class="form-grid" style="grid-template-columns:1fr"><%- csrfInput %>
     <label>Contraseña <input type="password" name="password" autofocus required minlength="8" /></label>
     <label>Confirmar <input type="password" name="confirm" required minlength="8" /></label>
     <button type="submit" class="btn btn-primary">Crear</button>

@@ -76,6 +76,7 @@ def build_dataset(bars: pd.DataFrame) -> pd.DataFrame:
         labeled["ticker"] = ticker
         parts.append(labeled)
     out = pd.concat(parts, ignore_index=True)
+    out[FEATURE_COLS] = out[FEATURE_COLS].replace([np.inf, -np.inf], np.nan)
     out = out.dropna(subset=FEATURE_COLS + ["label"])
     out = out[out["label"] != 2]  # drop NEUTRAL (no clear outcome)
     print(f"\nDataset: {len(out):,} rows after dropna + neutral filter")
@@ -184,11 +185,111 @@ def cmd_eval():
     evaluate(payload["model"], test)
 
 
+def _load_or_build_cached_dataset() -> pd.DataFrame:
+    cache = MODELS / "dataset_cache.parquet"
+    if cache.exists():
+        print(f"Reusing cached dataset: {cache}")
+        return pd.read_parquet(cache)
+    bars = load_bars()
+    df = build_dataset(bars)
+    df.to_parquet(cache, index=False)
+    print(f"Cached dataset to {cache}")
+    return df
+
+
+def cmd_tune(n_trials: int = 40, timeout_sec: int | None = None):
+    import optuna
+    from optuna.samplers import TPESampler
+
+    df = _load_or_build_cached_dataset()
+    train, test = temporal_split(df, test_frac=0.2)
+    X_train = train[FEATURE_COLS]
+    y_train = (train["label"] == 1).astype(int)
+    X_test = test[FEATURE_COLS]
+    y_test = (test["label"] == 1).astype(int)
+    pos_weight = (y_train == 0).sum() / max((y_train == 1).sum(), 1)
+
+    def objective(trial: "optuna.Trial") -> float:
+        params = dict(
+            n_estimators=trial.suggest_int("n_estimators", 200, 800, step=100),
+            max_depth=trial.suggest_int("max_depth", 3, 8),
+            learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
+            subsample=trial.suggest_float("subsample", 0.6, 1.0),
+            colsample_bytree=trial.suggest_float("colsample_bytree", 0.6, 1.0),
+            min_child_weight=trial.suggest_int("min_child_weight", 1, 20),
+            reg_alpha=trial.suggest_float("reg_alpha", 0.0, 1.0),
+            reg_lambda=trial.suggest_float("reg_lambda", 0.0, 3.0),
+            scale_pos_weight=pos_weight,
+            eval_metric="logloss",
+            tree_method="hist",
+            n_jobs=-1,
+            random_state=42,
+        )
+        model = xgb.XGBClassifier(**params)
+        model.fit(X_train, y_train)
+        proba = model.predict_proba(X_test)[:, 1]
+        auc = roc_auc_score(y_test, proba)
+        trial.set_user_attr("auc", float(auc))
+        return float(auc)
+
+    study = optuna.create_study(
+        direction="maximize",
+        sampler=TPESampler(seed=42),
+        study_name="baseline_xgb",
+    )
+    print(f"Optuna tune: n_trials={n_trials} timeout={timeout_sec}")
+    study.optimize(objective, n_trials=n_trials, timeout=timeout_sec, show_progress_bar=False)
+
+    best = study.best_trial
+    print(f"\n=== Best trial #{best.number} ===")
+    print(f"AUC: {best.value:.4f}")
+    for k, v in best.params.items():
+        print(f"  {k}: {v}")
+
+    print("\nRe-training final model with best params on train+test (full data)...")
+    full_X = pd.concat([X_train, X_test])
+    full_y = pd.concat([y_train, y_test])
+    final = xgb.XGBClassifier(
+        **best.params,
+        scale_pos_weight=pos_weight,
+        eval_metric="logloss",
+        tree_method="hist",
+        n_jobs=-1,
+        random_state=42,
+    )
+    final.fit(full_X, full_y)
+    joblib.dump({
+        "model": final,
+        "feature_cols": FEATURE_COLS,
+        "target_pct": TARGET_PCT,
+        "stop_pct": STOP_PCT,
+        "horizon_min": HORIZON_MIN,
+        "best_params": best.params,
+        "best_auc": float(best.value),
+    }, MODELS / "tuned_xgb.joblib")
+    with open(MODELS / "tune_summary.json", "w") as f:
+        json.dump({
+            "best_auc": float(best.value),
+            "best_params": best.params,
+            "n_trials": len(study.trials),
+            "all_trials": [
+                {"number": t.number, "auc": t.value, "params": t.params}
+                for t in study.trials
+            ],
+        }, f, indent=2)
+    print(f"\nSaved: {MODELS / 'tuned_xgb.joblib'}")
+    print(f"Saved: {MODELS / 'tune_summary.json'}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("cmd", choices=["train", "eval"], help="qué hacer")
+    parser.add_argument("cmd", choices=["train", "eval", "tune"], help="qué hacer")
+    parser.add_argument("--trials", type=int, default=40, help="optuna trials (default 40)")
+    parser.add_argument("--timeout", type=int, default=None, help="optuna timeout seg")
     args = parser.parse_args()
     if args.cmd == "train":
         cmd_train()
     elif args.cmd == "eval":
         cmd_eval()
+    elif args.cmd == "tune":
+        cmd_tune(n_trials=args.trials, timeout_sec=args.timeout)

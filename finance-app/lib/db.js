@@ -6,7 +6,7 @@ const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'financ
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const raw = new DatabaseSync(dbPath);
-raw.exec(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;`);
+raw.exec(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;`);
 
 raw.exec(`
   CREATE TABLE IF NOT EXISTS accounts (
@@ -115,6 +115,7 @@ raw.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals(ts);
   CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol);
+  CREATE INDEX IF NOT EXISTS idx_signals_type_ts ON signals(type, ts);
 
   CREATE TABLE IF NOT EXISTS alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,7 +150,145 @@ raw.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_minute_bars_ts ON minute_bars(ts);
   CREATE INDEX IF NOT EXISTS idx_minute_bars_ticker_ts ON minute_bars(ticker, ts);
+
+  CREATE TABLE IF NOT EXISTS shadow_predictions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    entry_ts INTEGER NOT NULL,
+    entry_price REAL NOT NULL,
+    prob REAL,
+    model_meta_json TEXT,
+    features_json TEXT,
+    signal_id INTEGER,
+    outcome TEXT,
+    exit_ts INTEGER,
+    exit_price REAL,
+    pnl_pct REAL,
+    predict_status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_shadow_pred_ts ON shadow_predictions(entry_ts);
+  CREATE INDEX IF NOT EXISTS idx_shadow_pred_symbol ON shadow_predictions(symbol);
+  CREATE INDEX IF NOT EXISTS idx_shadow_pred_signal ON shadow_predictions(signal_id);
+
+  CREATE TABLE IF NOT EXISTS ml_signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    prob REAL,
+    threshold REAL,
+    message TEXT,
+    reason TEXT,
+    payload_json TEXT,
+    ts INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ml_signals_ts ON ml_signals(ts);
+  CREATE INDEX IF NOT EXISTS idx_ml_signals_symbol ON ml_signals(symbol);
+
+  CREATE TABLE IF NOT EXISTS ml_positions (
+    symbol TEXT PRIMARY KEY,
+    entry REAL NOT NULL,
+    target REAL NOT NULL,
+    stop REAL NOT NULL,
+    target_pct REAL,
+    stop_pct REAL,
+    prob REAL,
+    entry_ts INTEGER NOT NULL,
+    expire_ts INTEGER NOT NULL,
+    shares REAL,
+    capital_usd REAL,
+    payload_json TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS ml_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    entry REAL NOT NULL,
+    exit REAL NOT NULL,
+    target_pct REAL,
+    stop_pct REAL,
+    prob REAL,
+    entry_ts INTEGER NOT NULL,
+    exit_ts INTEGER NOT NULL,
+    outcome TEXT,
+    gross_pct REAL,
+    net_pct REAL,
+    pnl_usd REAL,
+    reason TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_ml_trades_ts ON ml_trades(entry_ts);
+  CREATE INDEX IF NOT EXISTS idx_ml_trades_exit_ts ON ml_trades(exit_ts);
+  CREATE INDEX IF NOT EXISTS idx_ml_trades_symbol ON ml_trades(symbol);
 `);
+
+function migrateShadowPredictions() {
+  const cols = raw.prepare(`PRAGMA table_info(shadow_predictions)`).all();
+  if (cols.length === 0) return;
+  const probCol = cols.find(c => c.name === 'prob');
+  const hasStatus = cols.some(c => c.name === 'predict_status');
+  const needsProbRelax = probCol && probCol.notnull === 1;
+  if (!needsProbRelax && hasStatus) return;
+  raw.exec('BEGIN');
+  try {
+    raw.exec(`
+      CREATE TABLE shadow_predictions_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        entry_ts INTEGER NOT NULL,
+        entry_price REAL NOT NULL,
+        prob REAL,
+        model_meta_json TEXT,
+        features_json TEXT,
+        signal_id INTEGER,
+        outcome TEXT,
+        exit_ts INTEGER,
+        exit_price REAL,
+        pnl_pct REAL,
+        predict_status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO shadow_predictions_new
+        (id, symbol, entry_ts, entry_price, prob, model_meta_json, features_json,
+         signal_id, outcome, exit_ts, exit_price, pnl_pct, predict_status, created_at)
+      SELECT id, symbol, entry_ts, entry_price, prob, model_meta_json, features_json,
+             signal_id, outcome, exit_ts, exit_price, pnl_pct,
+             CASE WHEN prob IS NULL THEN 'pending' ELSE 'done' END,
+             created_at
+        FROM shadow_predictions;
+      DROP TABLE shadow_predictions;
+      ALTER TABLE shadow_predictions_new RENAME TO shadow_predictions;
+      CREATE INDEX IF NOT EXISTS idx_shadow_pred_ts ON shadow_predictions(entry_ts);
+      CREATE INDEX IF NOT EXISTS idx_shadow_pred_symbol ON shadow_predictions(symbol);
+      CREATE INDEX IF NOT EXISTS idx_shadow_pred_signal ON shadow_predictions(signal_id);
+    `);
+    raw.exec('COMMIT');
+  } catch (err) {
+    raw.exec('ROLLBACK');
+    throw err;
+  }
+}
+migrateShadowPredictions();
+
+raw.exec(`CREATE INDEX IF NOT EXISTS idx_shadow_pred_status ON shadow_predictions(predict_status);`);
+
+function optimize() {
+  raw.exec('PRAGMA optimize');
+}
+
+let shutdownHooked = false;
+function ensureShutdownHook() {
+  if (shutdownHooked) return;
+  shutdownHooked = true;
+  // Solo en beforeExit (cuando el event loop está vacío). NO en SIGINT/SIGTERM —
+  // eso lo maneja server.js para drenar HTTP/SSE primero; este hook se dispara
+  // al final del lifecycle natural una vez que el server cerró.
+  process.once('beforeExit', () => {
+    try { raw.exec('PRAGMA optimize'); } catch {}
+    try { raw.close(); } catch {}
+  });
+}
+ensureShutdownHook();
 
 const db = {
   prepare(sql) {
@@ -161,6 +300,7 @@ const db = {
     };
   },
   exec: (sql) => raw.exec(sql),
+  optimize,
 };
 
 module.exports = db;

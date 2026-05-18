@@ -3,7 +3,10 @@ const path = require('node:path');
 const db = require('./db');
 const { fetchUSDCLPNearest } = require('./fxHistorical');
 
-const FILE = path.join(__dirname, '..', 'racional.txt');
+const FILE = process.env.RACIONAL_FILE
+  || (fs.existsSync(path.join(__dirname, '..', 'data', 'racional.txt'))
+        ? path.join(__dirname, '..', 'data', 'racional.txt')
+        : path.join(__dirname, '..', 'racional.txt'));
 
 const TRADE_BLOCK_RE = /(?:(?:Compraste|Vendiste)\s+US\$[\d.,]+\s+de\s+[^()]+\([A-Z]{1,6}\)|Tu (?:compra|venta) de\s+[A-Z]{1,6})[\s\S]*?Orden\s+#([0-9A-F]{6,})\s*\n\s*(Recibiste|Vendiste)\s+([\d.,]+)\s+acciones\s+de\s+[^()]+\(([A-Z]{1,6})\)[^.]*?a un valor de US\$([\d.,]+)\s+por acción/g;
 const INNER_DATE_RE = /Orden\s*\n\s*enviada\s*\n\s*(\d{2}\/\d{2}\/\d{2})/;

@@ -3,9 +3,13 @@
   <a href="/transactions/export.csv" class="btn btn-sm">⇣ CSV</a>
 </div>
 
+<% if (typeof flash !== 'undefined' && flash) { %>
+  <div class="tip tip-<%= flash.type === 'good' ? 'good' : 'danger' %>"><strong><%= flash.text %></strong></div>
+<% } %>
+
 <div class="card">
   <h3>Registrar movimiento</h3>
-  <form method="post" action="/transactions" class="form-grid">
+  <form method="post" action="/transactions" class="form-grid"><%- csrfInput %>
     <label>Tipo
       <select name="kind" required>
         <option value="expense">Gasto</option>
@@ -80,7 +84,7 @@
           <td class="num <%= r.kind === 'income' ? 'income' : 'expense' %>"><%= r.kind === 'income' ? '+' : '−' %><%= clp(r.amount) %></td>
           <td style="white-space:nowrap">
             <a href="/transactions/<%= r.id %>/edit" class="btn btn-sm">✎</a>
-            <form method="post" action="/transactions/<%= r.id %>/delete" onsubmit="return confirm('¿Eliminar?')" style="display:inline">
+            <form method="post" action="/transactions/<%= r.id %>/delete" onsubmit="return confirm('¿Eliminar?')" style="display:inline"><%- csrfInput %>
               <button class="btn btn-danger btn-sm">×</button>
             </form>
           </td>

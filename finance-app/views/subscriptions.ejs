@@ -5,7 +5,7 @@
 
 <div class="card">
   <h3>Agregar suscripción</h3>
-  <form method="post" action="/subscriptions" class="form-grid">
+  <form method="post" action="/subscriptions" class="form-grid"><%- csrfInput %>
     <label>Nombre <input type="text" name="name" required /></label>
     <label>Monto total (CLP) <input type="number" name="amount_total" step="1" required /></label>
     <label>Ciclo
@@ -34,12 +34,12 @@
           <td><%= s.installments %></td>
           <td class="num"><%= clp(s.monthly_cost) %></td>
           <td>
-            <form method="post" action="/subscriptions/<%= s.id %>/toggle" style="display:inline">
+            <form method="post" action="/subscriptions/<%= s.id %>/toggle" style="display:inline"><%- csrfInput %>
               <button class="btn btn-sm"><%= s.active ? '✓' : '✗' %></button>
             </form>
           </td>
           <td>
-            <form method="post" action="/subscriptions/<%= s.id %>/delete" onsubmit="return confirm('¿Eliminar?')" style="display:inline">
+            <form method="post" action="/subscriptions/<%= s.id %>/delete" onsubmit="return confirm('¿Eliminar?')" style="display:inline"><%- csrfInput %>
               <button class="btn btn-danger btn-sm">×</button>
             </form>
           </td>

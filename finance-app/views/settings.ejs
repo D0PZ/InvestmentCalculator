@@ -7,7 +7,7 @@
 <div class="grid grid-2">
   <div class="card">
     <h3>Cambiar contraseña</h3>
-    <form method="post" action="/settings/password" class="form-grid">
+    <form method="post" action="/settings/password" class="form-grid"><%- csrfInput %>
       <label>Actual <input type="password" name="current" required /></label>
       <label>Nueva (mín 8) <input type="password" name="password" required minlength="8" /></label>
       <label>Confirmar <input type="password" name="confirm" required minlength="8" /></label>
@@ -22,10 +22,10 @@
       <% if (fx.fallback) { %>· <em style="color:var(--warn)">fallback 950</em><% } %>
       <% if (fx.manual) { %>· <em style="color:var(--accent)">manual</em><% } %>
     </p>
-    <form method="post" action="/settings/fx/refresh" style="display:inline-block;margin-right:8px">
+    <form method="post" action="/settings/fx/refresh" style="display:inline-block;margin-right:8px"><%- csrfInput %>
       <button class="btn">↻ Refrescar desde mindicador.cl</button>
     </form>
-    <form method="post" action="/settings/fx/manual" class="form-grid" style="margin-top:14px">
+    <form method="post" action="/settings/fx/manual" class="form-grid" style="margin-top:14px"><%- csrfInput %>
       <label>Tasa manual <input type="number" name="rate" step="0.01" min="0" placeholder="905.36" required /></label>
       <button type="submit" class="btn">Aplicar manual</button>
     </form>
