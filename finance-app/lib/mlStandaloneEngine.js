@@ -80,7 +80,10 @@ class MLStandaloneEngine extends EventEmitter {
   }
 
   _resolveEligibleTickers(watchlist) {
-    const base = (watchlist || []).filter(t => t !== 'SPY').map(t => t.toUpperCase());
+    const REFERENCE = new Set(['SPY', 'QQQ']);
+    const base = (watchlist || [])
+      .map(t => t.toUpperCase())
+      .filter(t => !REFERENCE.has(t));
     if (this.cfg.whitelist.length > 0) {
       return base.filter(t => this.cfg.whitelist.includes(t));
     }

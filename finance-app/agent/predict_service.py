@@ -224,7 +224,7 @@ def _score_one(df_bars: pd.DataFrame, symbol: str) -> dict:
         missing_cols = [c for c in feature_cols if missing.get(c, 0) > 0]
         return {"ok": False, "symbol": symbol, "error": "feature_nan",
                 "missing_features": missing_cols[:10]}
-    X = last[feature_cols].values
+    X = last[feature_cols]
     prob_raw = float(model.predict_proba(X)[0, 1])
     prob = prob_raw
     if calibrator is not None:

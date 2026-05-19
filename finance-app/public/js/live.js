@@ -632,4 +632,167 @@
   if (corrRefreshBtn) corrRefreshBtn.addEventListener('click', loadCorrelation);
   if (corrDaysSel) corrDaysSel.addEventListener('change', loadCorrelation);
   loadCorrelation();
+
+  // -------- Agente ML standalone --------
+  const mlPanel = document.getElementById('mlPanel');
+  const mlVersionEl = document.getElementById('mlVersion');
+  const mlThresholdEl = document.getElementById('mlThreshold');
+  const mlOpenCountEl = document.getElementById('mlOpenCount');
+  const mlTradesCountEl = document.getElementById('mlTradesCount');
+  const mlWinRateEl = document.getElementById('mlWinRate');
+  const mlTotalPnlEl = document.getElementById('mlTotalPnl');
+  const mlLastCycleEl = document.getElementById('mlLastCycle');
+  const mlOpenListEl = document.getElementById('mlOpenList');
+  const mlTradesListEl = document.getElementById('mlTradesList');
+  const mlRefreshBtn = document.getElementById('mlRefresh');
+
+  const mlOpenPositions = new Map();
+  const mlTrades = [];
+  let mlStats = { trades: 0, wins: 0, winRate: null, totalPnl: 0 };
+  let mlCfg = null;
+
+  function renderMlStats() {
+    if (!mlPanel) return;
+    mlOpenCountEl.textContent = mlOpenPositions.size;
+    mlTradesCountEl.textContent = mlStats.trades || 0;
+    mlWinRateEl.textContent = mlStats.winRate != null ? mlStats.winRate + '%' : '—';
+    const pnl = mlStats.totalPnl || 0;
+    const sign = pnl >= 0 ? '+' : '';
+    mlTotalPnlEl.textContent = sign + '$' + pnl.toFixed(2);
+    mlTotalPnlEl.className = pnl > 0 ? 'up' : pnl < 0 ? 'down' : 'flat';
+  }
+
+  function renderMlOpen() {
+    if (!mlOpenListEl) return;
+    if (mlOpenPositions.size === 0) {
+      mlOpenListEl.innerHTML = '<li class="muted-sm">sin posiciones</li>';
+      return;
+    }
+    const items = [];
+    for (const [sym, p] of mlOpenPositions) {
+      const probPct = p.prob != null ? (p.prob * 100).toFixed(1) + '%' : '—';
+      items.push(
+        `<li class="ml-pos">
+          <div><strong>${sym}</strong> @ $${Number(p.entry).toFixed(2)}<span class="muted-sm"> · prob ${probPct}</span></div>
+          <div class="muted-sm">target $${Number(p.target).toFixed(2)} (+${Number(p.target_pct).toFixed(2)}%) · stop $${Number(p.stop).toFixed(2)} (-${Number(p.stop_pct).toFixed(2)}%)</div>
+        </li>`
+      );
+    }
+    mlOpenListEl.innerHTML = items.join('');
+  }
+
+  function renderMlTrades() {
+    if (!mlTradesListEl) return;
+    if (mlTrades.length === 0) {
+      mlTradesListEl.innerHTML = '<li class="muted-sm">sin trades</li>';
+      return;
+    }
+    const items = mlTrades.slice(0, 20).map(t => {
+      const pnl = Number(t.pnl_usd) || 0;
+      const sign = pnl >= 0 ? '+' : '';
+      const cls = pnl > 0 ? 'up' : pnl < 0 ? 'down' : 'flat';
+      const at = t.exit_ts ? new Date(t.exit_ts).toLocaleTimeString() : '';
+      return `<li class="ml-trade">
+        <div><strong>${t.symbol}</strong> <span class="${cls}">${sign}$${pnl.toFixed(2)}</span> <span class="muted-sm">${t.outcome || ''} · ${(Number(t.net_pct)||0).toFixed(2)}%</span></div>
+        <div class="muted-sm">$${Number(t.entry).toFixed(2)} → $${Number(t.exit).toFixed(2)} · ${t.reason || ''} · ${at}</div>
+      </li>`;
+    });
+    mlTradesListEl.innerHTML = items.join('');
+  }
+
+  async function loadMlState() {
+    if (!mlPanel) return;
+    try {
+      const res = await fetch('/live/ml/state');
+      const data = await res.json();
+      mlCfg = data.cfg || null;
+      if (data.modelMeta) {
+        mlVersionEl.textContent = (data.modelMeta.version || 'v?');
+        if (mlCfg) mlVersionEl.textContent += ' · cap $' + mlCfg.capitalUsd + ' · max ' + mlCfg.maxOpen;
+      }
+      if (data.threshold != null) {
+        mlThresholdEl.textContent = 'thr ' + Number(data.threshold).toFixed(3);
+      }
+      mlOpenPositions.clear();
+      for (const [sym, pos] of Object.entries(data.open || {})) mlOpenPositions.set(sym, pos);
+      if (data.stats) {
+        mlStats = {
+          trades: data.stats.trades || 0,
+          wins: data.stats.wins || 0,
+          winRate: data.stats.winRate,
+          totalPnl: data.stats.totalPnl || 0,
+        };
+      }
+      if (data.lastCycleAt) {
+        const ago = Math.round((Date.now() - data.lastCycleAt) / 1000);
+        const reason = data.lastCycleResult?.reason || (data.lastCycleResult?.evaluated != null ? 'evaluated ' + data.lastCycleResult.evaluated : 'ok');
+        mlLastCycleEl.textContent = 'hace ' + ago + 's · ' + reason;
+      }
+      renderMlStats();
+      renderMlOpen();
+      mlPanel.dataset.loaded = '1';
+    } catch (err) {
+      dbg('ml/state error: ' + err.message);
+    }
+  }
+
+  async function loadMlTrades() {
+    if (!mlPanel) return;
+    try {
+      const res = await fetch('/live/ml/trades?limit=30');
+      const data = await res.json();
+      mlTrades.length = 0;
+      for (const t of (data.trades || [])) mlTrades.push(t);
+      renderMlTrades();
+    } catch (err) {
+      dbg('ml/trades error: ' + err.message);
+    }
+  }
+
+  es.addEventListener('ml_signal', (ev) => {
+    const sig = JSON.parse(ev.data);
+    dbg('ml_signal: ' + sig.type + ' ' + sig.symbol);
+    if (sig.type === 'ENTRY' && sig.position) {
+      mlOpenPositions.set(sig.symbol, sig.position);
+      pushAlert({
+        id: 'ml-' + sig.ts,
+        symbol: sig.symbol,
+        severity: 'signal-entry',
+        message: sig.message,
+        ts: sig.ts,
+      });
+      tryBeep();
+    } else if (sig.type === 'EXIT' && sig.position) {
+      mlOpenPositions.delete(sig.symbol);
+      const p = sig.position;
+      mlTrades.unshift({
+        symbol: sig.symbol,
+        entry: p.entry, exit: p.exit,
+        outcome: p.outcome, net_pct: p.net_pct,
+        pnl_usd: p.pnl_usd, reason: sig.reason,
+        exit_ts: sig.ts,
+      });
+      if (mlTrades.length > 50) mlTrades.length = 50;
+      mlStats.trades = (mlStats.trades || 0) + 1;
+      if ((p.net_pct || 0) > 0) mlStats.wins = (mlStats.wins || 0) + 1;
+      mlStats.totalPnl = (mlStats.totalPnl || 0) + (p.pnl_usd || 0);
+      mlStats.winRate = mlStats.trades > 0 ? +(mlStats.wins / mlStats.trades * 100).toFixed(1) : null;
+      pushAlert({
+        id: 'ml-' + sig.ts,
+        symbol: sig.symbol,
+        severity: 'signal-exit',
+        message: sig.message,
+        ts: sig.ts,
+      });
+      tryBeep();
+      renderMlTrades();
+    }
+    renderMlStats();
+    renderMlOpen();
+  });
+
+  if (mlRefreshBtn) mlRefreshBtn.addEventListener('click', () => { loadMlState(); loadMlTrades(); });
+  loadMlState();
+  loadMlTrades();
+  setInterval(loadMlState, 30000);  // refresca el lastCycle indicator
 })();

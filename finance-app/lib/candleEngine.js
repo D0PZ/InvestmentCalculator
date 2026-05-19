@@ -131,10 +131,15 @@ class SymbolState {
 
   rvol() {
     if (!this.avgDailyVolume || this.avgDailyVolume <= 0) return null;
-    const now = new Date(this.lastTs || Date.now());
-    const utcH = now.getUTCHours();
-    const utcM = now.getUTCMinutes();
-    const minsSinceOpen = Math.max(1, (utcH - 14) * 60 + (utcM - 30));
+    // Usar minutos en NY directamente — evita el bug del offset UTC (EST vs EDT)
+    // que asumía apertura a 14:30 UTC y rompía el cálculo durante DST.
+    const ts = this.lastTs || Date.now();
+    const parts = {};
+    for (const p of new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit',
+    }).formatToParts(new Date(ts))) parts[p.type] = p.value;
+    const nyMin = parseInt(parts.hour, 10) * 60 + parseInt(parts.minute, 10);
+    const minsSinceOpen = Math.max(1, nyMin - (9 * 60 + 30));  // 9:30 NY = open
     const sessionMins = 390;
     const expected = this.avgDailyVolume * Math.min(minsSinceOpen, sessionMins) / sessionMins;
     return expected > 0 ? this.intradayVolume / expected : null;

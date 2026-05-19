@@ -54,10 +54,20 @@ async function bootstrap() {
   if (bootstrapped) return;
   bootstrapped = true;
 
+  // SPY/QQQ son referencias cross-asset que el modelo ML v2 necesita al minuto
+  // (corr_spy_30m, rel_strength_*) y que /correlation también consume. Se mantienen
+  // suscritas pero el mlStandaloneEngine las excluye de los tickers operables.
+  const REFERENCE_SYMBOLS = ['SPY', 'QQQ'];
+  const missingRefs = REFERENCE_SYMBOLS.filter(s => !feed.watchlist.includes(s));
+  if (missingRefs.length > 0) {
+    feed.setWatchlist([...feed.watchlist, ...missingRefs]);
+  }
+
   log.info({
     finnhubKey: !!process.env.FINNHUB_API_KEY,
     envWatchlist: process.env.LIVE_WATCHLIST,
     resolvedWatchlist: feed.watchlist,
+    referenceSymbols: REFERENCE_SYMBOLS,
   }, 'bootstrap');
 
   candleEngine.bindFeed(feed);

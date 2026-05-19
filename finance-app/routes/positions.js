@@ -69,7 +69,7 @@ router.post('/buy', async (req, res) => {
       clpAmount,
       description || `Compra ${t} ${newShares.toFixed(7)} sh @ US$${price.toFixed(2)} (US$${usd.toFixed(2)} · FX ${fxRate.toFixed(2)})`,
       account_id,
-      occurred_on || todayISO()
+      tradeDate
     );
 
     accounts.applyMovement(account_id, 'expense', clpAmount, 1);

@@ -53,6 +53,35 @@
     </div>
   </div>
 
+  <section class="ml-panel" id="mlPanel" data-loaded="0">
+    <header class="ml-header">
+      <h3>🤖 Agente ML standalone</h3>
+      <div class="ml-meta">
+        <span id="mlVersion" class="muted-sm">—</span>
+        <span class="muted-sm">·</span>
+        <span id="mlThreshold" class="muted-sm">thr —</span>
+        <button class="btn btn-sm" id="mlRefresh" type="button">↻</button>
+      </div>
+    </header>
+    <div class="ml-bar">
+      <div class="ml-stat"><span class="ml-label">Posiciones abiertas</span><strong id="mlOpenCount">0</strong></div>
+      <div class="ml-stat"><span class="ml-label">Trades</span><strong id="mlTradesCount">0</strong></div>
+      <div class="ml-stat"><span class="ml-label">Win rate</span><strong id="mlWinRate">—</strong></div>
+      <div class="ml-stat"><span class="ml-label">P&L total</span><strong id="mlTotalPnl" class="flat">$0.00</strong></div>
+      <div class="ml-stat"><span class="ml-label">Último ciclo</span><strong id="mlLastCycle" class="muted-sm">—</strong></div>
+    </div>
+    <div class="ml-body">
+      <div class="ml-col">
+        <h4>Posiciones abiertas</h4>
+        <ul id="mlOpenList" class="ml-list"><li class="muted-sm">sin posiciones</li></ul>
+      </div>
+      <div class="ml-col">
+        <h4>Trades recientes</h4>
+        <ul id="mlTradesList" class="ml-list"><li class="muted-sm">sin trades</li></ul>
+      </div>
+    </div>
+  </section>
+
   <details class="live-debug">
     <summary>debug log</summary>
     <pre id="debugLog">esperando...</pre>
