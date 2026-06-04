@@ -96,6 +96,55 @@ def _ensure_spy_cache():
         return _spy_cache["df"]
 
 
+EVENTS_REFRESH_SEC = int(os.getenv("ML_EVENTS_REFRESH_SEC", "600"))
+_events_cache = {}  # symbol -> {"data": dict, "last": ts}
+_events_lock = threading.Lock()
+_SENT_MAP = {"bullish": 1.0, "bearish": -1.0, "neutral": 0.0}
+
+
+def _date_to_ms(d):
+    """'YYYY-MM-DD' → ms epoch a medianoche UTC (alineado con add_event_features)."""
+    try:
+        return int(pd.Timestamp(d).normalize().tz_localize("UTC").timestamp() * 1000)
+    except Exception:
+        return None
+
+
+def _load_events(symbol: str) -> dict:
+    """Earnings + acciones de analistas del símbolo desde catalysts, cacheado.
+
+    Devuelve dict consumible por build_features_v2(events=...). Si no hay DB/datos,
+    devuelve listas vacías → add_event_features rellena centinelas neutros."""
+    sym = symbol.upper()
+    now = time.time()
+    with _events_lock:
+        c = _events_cache.get(sym)
+        if c and now - c["last"] < EVENTS_REFRESH_SEC:
+            return c["data"]
+    data = {"earnings_days": [], "rating_days": [], "rating_sent": []}
+    if DB_PATH.exists():
+        con = sqlite3.connect(str(DB_PATH))
+        try:
+            er = pd.read_sql_query(
+                "SELECT event_date FROM catalysts WHERE ticker=? AND type='earnings'",
+                con, params=(sym,))
+            rr = pd.read_sql_query(
+                "SELECT event_date, sentiment FROM catalysts WHERE ticker=? AND type='rating'",
+                con, params=(sym,))
+        finally:
+            con.close()
+        data["earnings_days"] = [x for x in (_date_to_ms(d) for d in er["event_date"]) if x is not None]
+        rd, rs = [], []
+        for d, s in zip(rr["event_date"], rr["sentiment"]):
+            ms = _date_to_ms(d)
+            if ms is not None:
+                rd.append(ms); rs.append(_SENT_MAP.get(s, 0.0))
+        data["rating_days"], data["rating_sent"] = rd, rs
+    with _events_lock:
+        _events_cache[sym] = {"data": data, "last": now}
+    return data
+
+
 def load_model():
     chosen = next((p for p in CANDIDATES if p.exists()), None)
     if chosen is None:
@@ -214,7 +263,8 @@ def _score_one(df_bars: pd.DataFrame, symbol: str) -> dict:
         return {"ok": False, "symbol": symbol, "error": "no_model"}
     if _state["version"] == "v2" or kind.startswith("per_ticker"):
         spy = _ensure_spy_cache()
-        feats = build_features_v2(df_bars, spy_bars=spy)
+        events = _load_events(symbol)
+        feats = build_features_v2(df_bars, spy_bars=spy, events=events)
     else:
         feats = build_features_v1(df_bars)
     feats[feature_cols] = feats[feature_cols].replace([np.inf, -np.inf], np.nan)

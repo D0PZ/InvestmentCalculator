@@ -82,6 +82,29 @@
     </div>
   </section>
 
+  <section class="catalyst-panel" id="catalystPanel" data-loaded="0">
+    <header class="cat-header">
+      <h3>📡 Catalyst Radar <small class="muted-sm">eventos fundamentales · Finnhub</small></h3>
+      <div class="cat-controls">
+        <span id="catStatus" class="muted-sm">—</span>
+        <button class="btn btn-sm" id="catRefresh" type="button">↻</button>
+      </div>
+    </header>
+    <div class="cat-body">
+      <table class="cat-table">
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Próx. earnings</th>
+            <th class="num">Consenso analistas</th>
+            <th>Última acción de analista</th>
+          </tr>
+        </thead>
+        <tbody id="catRows"><tr><td colspan="4" class="muted-sm">cargando…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
   <details class="live-debug">
     <summary>debug log</summary>
     <pre id="debugLog">esperando...</pre>

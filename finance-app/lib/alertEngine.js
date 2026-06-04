@@ -63,13 +63,32 @@ class AlertEngine extends EventEmitter {
     } catch {}
   }
 
-  bind({ candleEngine, edgarStream }) {
+  bind({ candleEngine, edgarStream, catalystStream }) {
     if (candleEngine) {
       candleEngine.on('update', ({ symbol, snapshot }) => this._evaluate(symbol, snapshot));
     }
     if (edgarStream) {
       edgarStream.on('filing', (filing) => this._onFiling(filing));
     }
+    if (catalystStream) {
+      catalystStream.on('catalyst', (c) => this._onCatalyst(c));
+    }
+  }
+
+  // Catalizador fundamental (earnings inminente, acción de analista, drift de consenso).
+  // El catalystStream ya deduplica a nivel DB (sólo emite eventos nuevos), por eso pasamos
+  // noTimeDedupe: no queremos que la ventana de 5m colapse dos ratings distintos del mismo símbolo.
+  _onCatalyst(c) {
+    const severity = c.sentiment === 'bearish' ? 'warn' : 'info';
+    this._fire({
+      type: `catalyst:${c.type}`,
+      symbol: c.ticker,
+      severity,
+      message: c.headline,
+      data: c,
+      ts: c.ts || Date.now(),
+      noTimeDedupe: true,
+    });
   }
 
   _evaluate(symbol, snap) {
@@ -129,7 +148,7 @@ class AlertEngine extends EventEmitter {
     const key = `${alert.symbol}:${alert.type}`;
     const now = Date.now();
     const last = this.lastFireAt.get(key) || 0;
-    if (alert.type !== 'filing' && now - last < this.rules.dedupeWindowMs) return;
+    if (!alert.noTimeDedupe && alert.type !== 'filing' && now - last < this.rules.dedupeWindowMs) return;
     this.lastFireAt.set(key, now);
 
     const enriched = {

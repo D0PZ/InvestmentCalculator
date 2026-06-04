@@ -370,7 +370,7 @@
                   : sev === 'signal' ? ' alert-signal' : '';
       li.className = `alert alert-${sev}${extra}`;
       const link = a.data?.url
-        ? `<a href="${a.data.url}" target="_blank" rel="noopener">abrir filing ↗</a>`
+        ? `<a href="${a.data.url}" target="_blank" rel="noopener">abrir ↗</a>`
         : '';
       li.innerHTML = `
         <div class="alert-head">
@@ -795,4 +795,80 @@
   loadMlState();
   loadMlTrades();
   setInterval(loadMlState, 30000);  // refresca el lastCycle indicator
+
+  // -------- Catalyst Radar (eventos fundamentales) --------
+  const catPanel = document.getElementById('catalystPanel');
+  const catRowsEl = document.getElementById('catRows');
+  const catStatusEl = document.getElementById('catStatus');
+  const catRefreshBtn = document.getElementById('catRefresh');
+
+  function esc(str) {
+    return String(str == null ? '' : str).replace(/[&<>"']/g,
+      m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  }
+  function sentDot(s) { return s === 'bullish' ? '🟢' : s === 'bearish' ? '🔴' : '⚪'; }
+
+  function renderCatalystRow(item) {
+    let earn = '<span class="muted-sm">—</span>';
+    if (item.nextEarnings) {
+      const d = item.nextEarnings.days_to;
+      const cls = d <= 7 ? ' cat-soon' : d <= 21 ? ' cat-near' : '';
+      earn = `<span class="cat-earn${cls}">${item.nextEarnings.date} · <strong>${d}d</strong></span>`;
+    }
+    let reco = '<span class="muted-sm">—</span>';
+    if (item.reco && item.reco.latest) {
+      const L = item.reco.latest;
+      const total = (L.strongBuy + L.buy + L.hold + L.sell + L.strongSell) || 1;
+      const bull = Math.round((L.strongBuy + L.buy) / total * 100);
+      const cls = item.reco.sentiment === 'bullish' ? 'up' : item.reco.sentiment === 'bearish' ? 'down' : 'flat';
+      reco = `<span class="cat-reco ${cls}" title="SB${L.strongBuy}/B${L.buy}/H${L.hold}/S${L.sell}/SS${L.strongSell} · score ${item.reco.score}">${bull}% bull <span class="muted-sm">(${L.strongBuy + L.buy}/${total})</span></span>`;
+    }
+    let rating = '<span class="muted-sm">sin acciones recientes</span>';
+    if (item.ratings && item.ratings.length) {
+      const r = item.ratings[0];
+      const firm = r.firm ? `<strong>${esc(r.firm)}</strong> · ` : '';
+      const link = r.url ? ` <a href="${esc(r.url)}" target="_blank" rel="noopener">↗</a>` : '';
+      const more = item.ratings.length > 1 ? ` · <span class="muted-sm">+${item.ratings.length - 1} más</span>` : '';
+      rating = `<div class="cat-rating cat-${r.sentiment || 'neutral'}">${sentDot(r.sentiment)} ${firm}<span title="${esc(r.headline)}">${esc((r.headline || '').slice(0, 78))}</span>${link}</div>
+                <div class="muted-sm">${esc(r.event_date)}${more}</div>`;
+    }
+    const thesis = item.thesis
+      ? ` <span class="cat-thesis-dot" title="${esc((item.thesis.headline || '') + (item.thesis.detail ? ' — ' + item.thesis.detail : ''))}">💡</span>`
+      : '';
+    return `<tr>
+      <td><strong>${esc(item.ticker)}</strong>${thesis}</td>
+      <td>${earn}</td>
+      <td class="num">${reco}</td>
+      <td>${rating}</td>
+    </tr>`;
+  }
+
+  async function loadCatalysts() {
+    if (!catPanel) return;
+    try {
+      const res = await fetch('/live/catalysts');
+      const data = await res.json();
+      const radar = data.radar || [];
+      catRowsEl.innerHTML = radar.map(renderCatalystRow).join('') ||
+        '<tr><td colspan="4" class="muted-sm">sin datos · corré scripts/backfill_catalysts.js</td></tr>';
+      if (data.state) {
+        const st = data.state;
+        const prem = (st.premiumBlocked || []).length ? ` · premium: ${st.premiumBlocked.join(',')}` : '';
+        catStatusEl.textContent = `${st.stats?.inserts ?? 0} nuevos · ${st.running ? 'activo' : (st.hasKey ? 'idle' : 'sin API key')}${prem}`;
+      }
+      catPanel.dataset.loaded = '1';
+    } catch (err) {
+      dbg('catalysts error: ' + err.message);
+    }
+  }
+
+  let catRefreshTimer = null;
+  es.addEventListener('catalyst', (ev) => {
+    try { const c = JSON.parse(ev.data); dbg('catalyst: ' + c.ticker + ' ' + c.type); } catch {}
+    if (catRefreshTimer) return;             // debounce: varios catalysts llegan juntos
+    catRefreshTimer = setTimeout(() => { catRefreshTimer = null; loadCatalysts(); }, 1500);
+  });
+  if (catRefreshBtn) catRefreshBtn.addEventListener('click', loadCatalysts);
+  loadCatalysts();
+  setInterval(loadCatalysts, 5 * 60 * 1000);
 })();

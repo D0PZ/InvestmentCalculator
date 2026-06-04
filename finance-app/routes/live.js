@@ -3,6 +3,7 @@ const router = express.Router();
 const { getLiveFeed, parseWatchlist } = require('../lib/liveFeed');
 const { getCandleEngine } = require('../lib/candleEngine');
 const { getEdgarStream } = require('../lib/edgarStream');
+const { getCatalystStream } = require('../lib/catalystStream');
 const { getAlertEngine } = require('../lib/alertEngine');
 const { getStrategyEngine } = require('../lib/strategyEngine');
 const { getMLStandaloneEngine } = require('../lib/mlStandaloneEngine');
@@ -21,6 +22,7 @@ let bootstrapped = false;
 const feed = getLiveFeed();
 const candleEngine = getCandleEngine();
 const edgar = getEdgarStream({ watchlist: feed.watchlist });
+const catalyst = getCatalystStream({ watchlist: feed.watchlist });
 const alertEngine = getAlertEngine();
 const strategy = getStrategyEngine();
 const mlStandalone = getMLStandaloneEngine();
@@ -71,7 +73,7 @@ async function bootstrap() {
   }, 'bootstrap');
 
   candleEngine.bindFeed(feed);
-  alertEngine.bind({ candleEngine, edgarStream: edgar });
+  alertEngine.bind({ candleEngine, edgarStream: edgar, catalystStream: catalyst });
   strategy.bind({ candleEngine });
   minuteBars.bindCandleEngine(candleEngine);
 
@@ -100,6 +102,7 @@ async function bootstrap() {
         const newWatchlist = [...feed.watchlist, ...symbolsToAdd];
         feed.setWatchlist(newWatchlist);
         edgar.setWatchlist(newWatchlist);
+        catalyst.setWatchlist(newWatchlist);
         log.info({ added: symbolsToAdd }, 'watchlist ampliada por racional.txt');
         loadReferenceData(symbolsToAdd).catch(() => {});
       }
@@ -123,6 +126,14 @@ async function bootstrap() {
     log.info({ symbol: f.symbol, title: f.title }, 'edgar filing');
     broadcast('filing', f);
   });
+  catalyst.on('status', (s) => {
+    log.info({ state: s.state, msg: s.message }, 'catalyst status');
+    broadcast('status', { source: 'catalyst', ...s });
+  });
+  catalyst.on('catalyst', (c) => {
+    log.info({ symbol: c.ticker, type: c.type, msg: c.headline }, 'catalyst');
+    broadcast('catalyst', c);
+  });
 
   let lastTickLogAt = 0;
   feed.on('tick', (t) => {
@@ -141,6 +152,8 @@ async function bootstrap() {
 
   edgar.setWatchlist(feed.watchlist);
   edgar.start();
+  catalyst.setWatchlist(feed.watchlist);
+  catalyst.start();
   feed.start();
 
   loadReferenceData(feed.watchlist).catch(err => log.error({ err }, 'reference data load failed'));
@@ -223,6 +236,11 @@ router.get('/ml/signals', async (req, res) => {
   res.json({ signals });
 });
 
+router.get('/catalysts', async (req, res) => {
+  await bootstrap();
+  res.json({ radar: catalyst.getRadar(feed.watchlist), state: catalyst.state() });
+});
+
 router.get('/stream', async (req, res) => {
   log.debug({ ip: req.ip }, 'SSE client connecting');
   await bootstrap();
@@ -292,6 +310,7 @@ router.post('/watchlist', express.json(), async (req, res) => {
   if (list.length === 0) return res.status(400).json({ error: 'empty watchlist' });
   feed.setWatchlist(list);
   edgar.setWatchlist(list);
+  catalyst.setWatchlist(list);
   loadReferenceData(list).catch(() => {});
   res.json({ watchlist: feed.watchlist });
 });

@@ -6,7 +6,7 @@ const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'financ
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const raw = new DatabaseSync(dbPath);
-raw.exec(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;`);
+raw.exec(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;`);
 
 raw.exec(`
   CREATE TABLE IF NOT EXISTS accounts (
@@ -271,6 +271,88 @@ function migrateShadowPredictions() {
 migrateShadowPredictions();
 
 raw.exec(`CREATE INDEX IF NOT EXISTS idx_shadow_pred_status ON shadow_predictions(predict_status);`);
+
+// Portafolio singleton del agente ML — cash disponible + P&L acumulado
+raw.exec(`
+  CREATE TABLE IF NOT EXISTS ml_portfolio (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    starting_cash REAL NOT NULL,
+    cash REAL NOT NULL,
+    realized_pnl REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+function seedMlPortfolio() {
+  const existing = raw.prepare(`SELECT id FROM ml_portfolio WHERE id = 1`).get();
+  if (existing) return;
+  const startingCash = Number(process.env.ML_STANDALONE_STARTING_CASH) || 5000;
+  // Reconciliar con estado pre-existente:
+  //   cash actual = starting_cash + Σ pnl_usd cerrados − Σ capital_usd de posiciones abiertas
+  const realizedRow = raw.prepare(`SELECT COALESCE(SUM(pnl_usd), 0) AS pnl FROM ml_trades`).get();
+  const openRow = raw.prepare(`SELECT COALESCE(SUM(capital_usd), 0) AS invested FROM ml_positions`).get();
+  const realized = Number(realizedRow?.pnl) || 0;
+  const invested = Number(openRow?.invested) || 0;
+  const cash = startingCash + realized - invested;
+  raw.prepare(
+    `INSERT INTO ml_portfolio (id, starting_cash, cash, realized_pnl, updated_at)
+     VALUES (1, ?, ?, ?, datetime('now'))`
+  ).run(startingCash, cash, realized);
+}
+seedMlPortfolio();
+
+// Aditiva: columnas para gestión dinámica de posiciones ML (breakeven/trailing/grace)
+function migrateMlPositionsDynamic() {
+  const cols = raw.prepare(`PRAGMA table_info(ml_positions)`).all();
+  if (cols.length === 0) return;
+  const has = (name) => cols.some(c => c.name === name);
+  const adds = [];
+  if (!has('current_stop'))     adds.push(`ALTER TABLE ml_positions ADD COLUMN current_stop REAL`);
+  if (!has('peak_price'))       adds.push(`ALTER TABLE ml_positions ADD COLUMN peak_price REAL`);
+  if (!has('breakeven_armed'))  adds.push(`ALTER TABLE ml_positions ADD COLUMN breakeven_armed INTEGER NOT NULL DEFAULT 0`);
+  if (!has('trailing_armed'))   adds.push(`ALTER TABLE ml_positions ADD COLUMN trailing_armed INTEGER NOT NULL DEFAULT 0`);
+  if (!has('max_loss_pct'))     adds.push(`ALTER TABLE ml_positions ADD COLUMN max_loss_pct REAL`);
+  if (adds.length === 0) return;
+  raw.exec('BEGIN');
+  try {
+    for (const sql of adds) raw.exec(sql);
+    // Backfill current_stop con el stop original para posiciones ya abiertas
+    raw.exec(`UPDATE ml_positions SET current_stop = stop WHERE current_stop IS NULL`);
+    raw.exec(`UPDATE ml_positions SET peak_price = entry WHERE peak_price IS NULL`);
+    raw.exec('COMMIT');
+  } catch (err) {
+    raw.exec('ROLLBACK');
+    throw err;
+  }
+}
+migrateMlPositionsDynamic();
+
+// Catalizadores / eventos fundamentales por ticker (earnings, acciones de analistas,
+// tendencia de recomendación, tesis). Alimenta el "Catalyst Radar" en /live y las
+// features de evento del modelo ML (días-a-earnings). dedupe_key UNIQUE → upsert idempotente.
+raw.exec(`
+  CREATE TABLE IF NOT EXISTS catalysts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker TEXT NOT NULL,
+    type TEXT NOT NULL,                 -- earnings | rating | reco_trend | news | thesis
+    event_date TEXT,                    -- YYYY-MM-DD en que ocurre/ocurrió el evento
+    headline TEXT,
+    detail TEXT,
+    sentiment TEXT,                     -- bullish | bearish | neutral
+    firm TEXT,                          -- casa de análisis si se detecta (rating)
+    source TEXT NOT NULL DEFAULT 'finnhub',
+    url TEXT,
+    payload_json TEXT,
+    ts INTEGER NOT NULL,                -- ms epoch en que se observó/registró
+    dedupe_key TEXT UNIQUE
+  );
+  CREATE INDEX IF NOT EXISTS idx_catalysts_ticker ON catalysts(ticker);
+  CREATE INDEX IF NOT EXISTS idx_catalysts_type ON catalysts(type);
+  CREATE INDEX IF NOT EXISTS idx_catalysts_event_date ON catalysts(event_date);
+  CREATE INDEX IF NOT EXISTS idx_catalysts_ticker_type ON catalysts(ticker, type, event_date);
+  CREATE INDEX IF NOT EXISTS idx_catalysts_ts ON catalysts(ts);
+`);
 
 function optimize() {
   raw.exec('PRAGMA optimize');

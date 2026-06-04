@@ -70,8 +70,37 @@ def load_data(ts_min=None):
     return others, spy
 
 
-def build_ticker_dataset(grp: pd.DataFrame, spy: pd.DataFrame, args) -> pd.DataFrame:
-    feats = build_features_v2(grp, spy_bars=spy)
+def load_events_map(tickers) -> dict:
+    """{ticker: {earnings_days, rating_days, rating_sent}} desde catalysts (features de evento)."""
+    con = sqlite3.connect(DB_PATH)
+    try:
+        er = pd.read_sql_query("SELECT ticker, event_date FROM catalysts WHERE type='earnings'", con)
+        rr = pd.read_sql_query("SELECT ticker, event_date, sentiment FROM catalysts WHERE type='rating'", con)
+    finally:
+        con.close()
+    sent_map = {"bullish": 1.0, "bearish": -1.0, "neutral": 0.0}
+
+    def to_ms(d):
+        try:
+            return int(pd.Timestamp(d).normalize().tz_localize("UTC").timestamp() * 1000)
+        except Exception:
+            return None
+
+    out = {t: {"earnings_days": [], "rating_days": [], "rating_sent": []} for t in tickers}
+    for t, d in zip(er["ticker"], er["event_date"]):
+        ms = to_ms(d)
+        if t in out and ms is not None:
+            out[t]["earnings_days"].append(ms)
+    for t, d, s in zip(rr["ticker"], rr["event_date"], rr["sentiment"]):
+        ms = to_ms(d)
+        if t in out and ms is not None:
+            out[t]["rating_days"].append(ms)
+            out[t]["rating_sent"].append(sent_map.get(s, 0.0))
+    return out
+
+
+def build_ticker_dataset(grp: pd.DataFrame, spy: pd.DataFrame, args, events=None) -> pd.DataFrame:
+    feats = build_features_v2(grp, spy_bars=spy, events=events)
     if args.label_mode == "atr":
         labeled = triple_barrier_atr(feats, atr_col="atr_14",
                                      target_mult=args.target_mult, stop_mult=args.stop_mult,
@@ -157,8 +186,11 @@ def main():
     bars, spy = load_data()
     tickers = (args.tickers.split(",") if args.tickers
                else sorted(bars["ticker"].unique().tolist()))
+    events_map = load_events_map(tickers)
+    n_ev = sum(1 for t in tickers if events_map.get(t, {}).get("earnings_days"))
     print(f"Per-ticker training: {len(tickers)} tickers, mode={args.label_mode}, "
-          f"target/stop={args.fixed_target}/{args.fixed_stop}, horizon={args.horizon}m")
+          f"target/stop={args.fixed_target}/{args.fixed_stop}, horizon={args.horizon}m · "
+          f"event-features para {n_ev}/{len(tickers)} con earnings")
 
     results = []
     profitable = []
@@ -167,7 +199,7 @@ def main():
         if len(grp) < 5000:
             print(f"  [{i}/{len(tickers)}] {t}: insufficient bars ({len(grp)}) — skip")
             continue
-        df = build_ticker_dataset(grp, spy, args)
+        df = build_ticker_dataset(grp, spy, args, events=events_map.get(t))
         if len(df) < 500:
             print(f"  [{i}/{len(tickers)}] {t}: insufficient labels ({len(df)}) — skip")
             continue
